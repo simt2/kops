@@ -48,29 +48,32 @@ func (p *SeedProvider) GetSeeds() ([]string, error) {
 
 		for _, server := range s {
 			if clusterName, ok := server.Metadata["cluster_name"]; ok {
-				if clusterName == p.clusterName {
-					// FIXME: clustername is the name of the network which just happens to correspond
-					if localAddr, ok := server.Addresses[clusterName]; ok {
-						type addresses []map[string]interface{}
-						if localAddresses, ok := localAddr.(addresses); ok {
-							for _, addr := range localAddresses {
-								if addrType, ok := addr["OS-EXT-IPS:type"]; ok && addrType == "fixed" {
-									if fixedIP, ok := addr["addr"]; ok {
-										if fixedIPStr, ok := fixedIP.(string); ok {
-											glog.Errorf("Found seed %s.", fixedIPStr)
-											seeds = append(seeds, fixedIPStr)
-										} else {
-											glog.Errorf("Fixed IP was not a string: %v", fixedIP)
-										}
+				var err error
+				if localAddr, ok := server.Addresses[clusterName]; ok {
+
+					if localAddresses, ok := localAddr.([]interface{}); ok {
+						for _, addr := range localAddresses {
+							addrMap := addr.(map[string]interface{})
+							if addrType, ok := addrMap["OS-EXT-IPS:type"]; ok && addrType == "fixed" {
+								if fixedIP, ok := addrMap["addr"]; ok {
+									if fixedIPStr, ok := fixedIP.(string); ok {
+										seeds = append(seeds, fixedIPStr)
 									} else {
-										glog.Errorf("Type fixed did not contain addr: %v", addr)
+										err = fmt.Errorf("Fixed IP was not a string: %v", fixedIP)
 									}
+								} else {
+									err = fmt.Errorf("Type fixed did not contain addr: %v", addr)
 								}
+							} else {
+								err = fmt.Errorf("Server %s did not contain a fixed IP.", server.ID)
 							}
 						}
 					}
 				} else {
-					glog.Errorf("Server %s cluster mismatch: %s != %s", server.Name, clusterName, p.clusterName)
+					err = fmt.Errorf("Server `%s` interface name `%s` not found!", server.ID, clusterName)
+				}
+				if err != nil {
+					glog.Warningf("Failed to list seeds: %v", err)
 				}
 			}
 		}
