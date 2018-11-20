@@ -94,7 +94,6 @@ func (_ *ServerGroup) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, cha
 		if err != nil {
 			return fmt.Errorf("error creating ServerGroup: %v", err)
 		}
-
 		e.ID = fi.String(g.ID)
 		return nil
 	}

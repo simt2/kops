@@ -348,6 +348,8 @@ func (t *ProtokubeBuilder) ProtokubeFlags(k8sVersion semver.Version) (*Protokube
 				f.DNSProvider = fi.String("coredns")
 				f.ClusterID = fi.String(t.Cluster.ObjectMeta.Name)
 				f.DNSServer = fi.String(*t.Cluster.Spec.CloudConfig.VSphereCoreDNSServer)
+			case kops.CloudProviderOpenstack:
+				f.ClusterID = fi.String(t.Cluster.ObjectMeta.Name)
 			default:
 				glog.Warningf("Unknown cloudprovider %q; won't set DNS provider", t.Cluster.Spec.CloudProvider)
 			}
@@ -407,6 +409,49 @@ func (t *ProtokubeBuilder) ProtokubeEnvironmentVariables() string {
 		buffer.WriteString("'")
 		buffer.WriteString(os.Getenv("S3_SECRET_ACCESS_KEY"))
 		buffer.WriteString("'")
+		buffer.WriteString(" ")
+	}
+
+	if os.Getenv("OS_AUTH_URL") != "" {
+		buffer.WriteString(" ")
+		buffer.WriteString("-e OS_TENANT_ID=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_TENANT_ID"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_TENANT_NAME=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_TENANT_NAME"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_PROJECT_DOMAIN_NAME=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_PROJECT_DOMAIN_NAME"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_PROJECT_DOMAIN_ID=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_PROJECT_DOMAIN_ID"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_USERNAME=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_USERNAME"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_PASSWORD=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_PASSWORD"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_AUTH_URL=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_AUTH_URL"))
+		buffer.WriteString("'")
+		buffer.WriteString(" -e OS_REGION_NAME=")
+		buffer.WriteString("'")
+		buffer.WriteString(os.Getenv("OS_REGION_NAME"))
+		buffer.WriteString("'")
+	}
+
+	if os.Getenv("OPENSTACK_CREDENTIAL_FILE") != "" {
+		buffer.WriteString(" ")
+		buffer.WriteString("-e OPENSTACK_CREDENTIAL_FILE=")
+		buffer.WriteString(filepath.Join("/rootfs", os.Getenv("OPENSTACK_CREDENTIAL_FILE")))
 		buffer.WriteString(" ")
 	}
 

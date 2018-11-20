@@ -38,6 +38,15 @@ func (n *Network) CompareWithID() *string {
 	return n.ID
 }
 
+func NewNetworkTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, network *networks.Network) (*Network, error) {
+	task := &Network{
+		ID:        fi.String(network.ID),
+		Name:      fi.String(network.Name),
+		Lifecycle: lifecycle,
+	}
+	return task, nil
+}
+
 func (n *Network) Find(context *fi.Context) (*Network, error) {
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 	opt := networks.ListOpts{
@@ -54,12 +63,7 @@ func (n *Network) Find(context *fi.Context) (*Network, error) {
 		return nil, fmt.Errorf("found multiple networks with name: %s", fi.StringValue(n.Name))
 	}
 	v := ns[0]
-	actual := &Network{
-		ID:        fi.String(v.ID),
-		Name:      fi.String(v.Name),
-		Lifecycle: n.Lifecycle,
-	}
-	return actual, nil
+	return NewNetworkTaskFromCloud(cloud, n.Lifecycle, &v)
 }
 
 func (c *Network) Run(context *fi.Context) error {

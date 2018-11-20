@@ -87,12 +87,19 @@ func (_ *Router) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes 
 			Name:         fi.StringValue(e.Name),
 			AdminStateUp: fi.Bool(true),
 		}
+		floatingNet, err := t.Cloud.GetExternalNetwork()
+		if err != nil {
+			return fmt.Errorf("Error creating router.  Could not list external networks for gateway: %v", err)
+		}
+
+		opt.GatewayInfo = &routers.GatewayInfo{
+			NetworkID: floatingNet.ID,
+		}
 
 		v, err := t.Cloud.CreateRouter(opt)
 		if err != nil {
 			return fmt.Errorf("Error creating router: %v", err)
 		}
-
 		e.ID = fi.String(v.ID)
 		glog.V(2).Infof("Creating a new Openstack router, id=%s", v.ID)
 		return nil

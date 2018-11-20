@@ -5,7 +5,7 @@ go_library(
     srcs = [
         "context.go",
         "convenience.go",
-        "instance.go",
+        "firewall.go",
         "lb.go",
         "network.go",
         "servergroup.go",
@@ -18,5 +18,7 @@ go_library(
         "//pkg/model:go_default_library",
         "//upup/pkg/fi:go_default_library",
         "//upup/pkg/fi/cloudup/openstacktasks:go_default_library",
+        "//util/pkg/vfs:go_default_library",
+        "//vendor/github.com/golang/glog:go_default_library",
     ],
 )

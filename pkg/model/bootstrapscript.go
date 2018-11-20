@@ -91,6 +91,17 @@ func (b *BootstrapScript) buildEnvironmentVariables(cluster *kops.Cluster) (map[
 		}
 	}
 
+	if kops.CloudProviderID(cluster.Spec.CloudProvider) == kops.CloudProviderOpenstack {
+		env["OS_TENANT_ID"] = cluster.Spec.CloudConfig.Openstack.TenantID
+		env["OS_TENANT_NAME"] = cluster.Spec.CloudConfig.Openstack.TenantName
+		env["OS_PROJECT_DOMAIN_NAME"] = cluster.Spec.CloudConfig.Openstack.DomainName
+		env["OS_PROJECT_DOMAIN_ID"] = cluster.Spec.CloudConfig.Openstack.DomainID
+		env["OS_USERNAME"] = cluster.Spec.CloudConfig.Openstack.Username
+		env["OS_PASSWORD"] = cluster.Spec.CloudConfig.Openstack.Password
+		env["OS_AUTH_URL"] = cluster.Spec.CloudConfig.Openstack.AuthURL
+		env["OS_REGION_NAME"] = cluster.Spec.CloudConfig.Openstack.Region
+	}
+
 	return env, nil
 }
 

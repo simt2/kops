@@ -104,6 +104,42 @@ func (b *CloudConfigBuilder) Build(c *fi.ModelBuilderContext) error {
 		// We need this to support Kubernetes vSphere CloudProvider < v1.5.3
 		lines = append(lines, "[disk]")
 		lines = append(lines, "scsicontrollertype = pvscsi")
+	case "openstack":
+		osc := cloudConfig.Openstack
+		if osc == nil {
+			break
+		}
+
+		lines = append(lines,
+			fmt.Sprintf("auth-url=\"%s\"", osc.AuthURL),
+			fmt.Sprintf("username=\"%s\"", osc.Username),
+			fmt.Sprintf("password=\"%s\"", osc.Password),
+			fmt.Sprintf("region=\"%s\"", osc.Region),
+			fmt.Sprintf("tenant-id=\"%s\"", osc.TenantID),
+			fmt.Sprintf("tenant-name=\"%s\"", osc.TenantName),
+			fmt.Sprintf("domain-name=\"%s\"", osc.DomainName),
+			fmt.Sprintf("domain-id=\"%s\"", osc.DomainID),
+			"",
+		)
+		if lb := osc.Loadbalancer; lb != nil {
+			lines = append(lines,
+				"[LoadBalancer]",
+				fmt.Sprintf("floating-network-id=%s", lb.FloatingNetwork),
+				fmt.Sprintf("lb-method=%s", lb.Method),
+				fmt.Sprintf("lb-provider=%s", lb.Provider),
+				fmt.Sprintf("use-octavia=%t", lb.UseOctavia),
+				"",
+			)
+		}
+		if monitor := osc.Monitor; monitor != nil {
+			lines = append(lines,
+				"create-monitor=yes",
+				fmt.Sprintf("monitor-delay=%s", monitor.Delay),
+				fmt.Sprintf("monitor-timeout=%s", monitor.Timeout),
+				fmt.Sprintf("monitor-max-retries=%d", monitor.MaxRetries),
+				"",
+			)
+		}
 	}
 
 	config := "[global]\n" + strings.Join(lines, "\n") + "\n"

@@ -382,16 +382,16 @@ func (c *ApplyClusterCmd) Run() error {
 				"iamRolePolicy":          &awstasks.IAMRolePolicy{},
 
 				// VPC / Networking
-				"dhcpOptions":                &awstasks.DHCPOptions{},
-				"internetGateway":            &awstasks.InternetGateway{},
-				"route":                      &awstasks.Route{},
-				"routeTable":                 &awstasks.RouteTable{},
-				"routeTableAssociation":      &awstasks.RouteTableAssociation{},
-				"securityGroup":              &awstasks.SecurityGroup{},
-				"securityGroupRule":          &awstasks.SecurityGroupRule{},
-				"subnet":                     &awstasks.Subnet{},
-				"vpc":                        &awstasks.VPC{},
-				"ngw":                        &awstasks.NatGateway{},
+				"dhcpOptions":           &awstasks.DHCPOptions{},
+				"internetGateway":       &awstasks.InternetGateway{},
+				"route":                 &awstasks.Route{},
+				"routeTable":            &awstasks.RouteTable{},
+				"routeTableAssociation": &awstasks.RouteTableAssociation{},
+				"securityGroup":         &awstasks.SecurityGroup{},
+				"securityGroupRule":     &awstasks.SecurityGroupRule{},
+				"subnet":                &awstasks.Subnet{},
+				"vpc":                   &awstasks.VPC{},
+				"ngw":                   &awstasks.NatGateway{},
 				"vpcDHDCPOptionsAssociation": &awstasks.VPCDHCPOptionsAssociation{},
 
 				// ELB
@@ -652,10 +652,11 @@ func (c *ApplyClusterCmd) Run() error {
 				}
 
 				l.Builders = append(l.Builders,
-					&openstackmodel.APILBModelBuilder{OpenstackModelContext: openstackModelContext, Lifecycle: &clusterLifecycle},
+					&model.MasterVolumeBuilder{KopsModelContext: modelContext, Lifecycle: &clusterLifecycle},
+					// &openstackmodel.APILBModelBuilder{OpenstackModelContext: openstackModelContext, Lifecycle: &clusterLifecycle},
 					&openstackmodel.NetworkModelBuilder{OpenstackModelContext: openstackModelContext, Lifecycle: &networkLifecycle},
 					&openstackmodel.SSHKeyModelBuilder{OpenstackModelContext: openstackModelContext, Lifecycle: &securityLifecycle},
-					&openstackmodel.ServerGroupModelBuilder{OpenstackModelContext: openstackModelContext, Lifecycle: &clusterLifecycle},
+					&openstackmodel.FirewallModelBuilder{OpenstackModelContext: openstackModelContext, Lifecycle: &securityLifecycle},
 				)
 
 			default:
@@ -751,10 +752,10 @@ func (c *ApplyClusterCmd) Run() error {
 			KopsModelContext: modelContext,
 		}
 
-		l.Builders = append(l.Builders, &openstackmodel.InstanceModelBuilder{
+		l.Builders = append(l.Builders, &openstackmodel.ServerGroupModelBuilder{
 			OpenstackModelContext: openstackModelContext,
-			//BootstrapScript:       bootstrapScriptBuilder,
-			Lifecycle: &clusterLifecycle,
+			BootstrapScript:       bootstrapScriptBuilder,
+			Lifecycle:             &clusterLifecycle,
 		})
 
 	default:

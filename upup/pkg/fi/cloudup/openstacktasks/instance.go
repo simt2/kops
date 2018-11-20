@@ -29,21 +29,41 @@ import (
 
 //go:generate fitask -type=Instance
 type Instance struct {
-	ID     *string
-	Name   *string
-	Port   *Port
-	Region *string
-	Flavor *string
-	Image  *string
-	SSHKey *string
-	Tags   []string
-	Count  int
-	Role   *string
+	ID          *string
+	Name        *string
+	Port        *Port
+	Region      *string
+	Flavor      *string
+	Image       *string
+	SSHKey      *string
+	ServerGroup *ServerGroup
+	Tags        []string
+	Role        *string
+	UserData    *string
+	Metadata    map[string]string
 
 	Lifecycle *fi.Lifecycle
 }
 
+// GetDependencies returns the dependencies of the Instance task
+func (e *Instance) GetDependencies(tasks map[string]fi.Task) []fi.Task {
+	var deps []fi.Task
+	for _, task := range tasks {
+		if _, ok := task.(*ServerGroup); ok {
+			deps = append(deps, task)
+		}
+		if _, ok := task.(*Port); ok {
+			deps = append(deps, task)
+		}
+	}
+	return deps
+}
+
 var _ fi.CompareWithID = &Instance{}
+
+func (e *Instance) WaitForStatusActive(t *openstack.OpenstackAPITarget) error {
+	return servers.WaitForStatus(t.Cloud.ComputeClient(), *e.ID, "ACTIVE", 120)
+}
 
 func (e *Instance) CompareWithID() *string {
 	return e.ID
@@ -105,24 +125,32 @@ func (_ *Instance) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, change
 					Port: fi.StringValue(e.Port.ID),
 				},
 			},
+			Metadata:      e.Metadata,
+			ServiceClient: t.Cloud.ComputeClient(),
+		}
+		if e.UserData != nil {
+			opt.UserData = []byte(*e.UserData)
 		}
 		keyext := keypairs.CreateOptsExt{
 			CreateOptsBuilder: opt,
-			KeyName:           fi.StringValue(e.SSHKey),
+			KeyName:           openstackKeyPairName(fi.StringValue(e.SSHKey)),
 		}
+
 		sgext := schedulerhints.CreateOptsExt{
 			CreateOptsBuilder: keyext,
 			SchedulerHints: &schedulerhints.SchedulerHints{
-				Group: fi.StringValue(e.Role),
+				Group: *e.ServerGroup.ID,
 			},
 		}
 		v, err := t.Cloud.CreateInstance(sgext)
 		if err != nil {
 			return fmt.Errorf("Error creating instance: %v", err)
 		}
-
 		e.ID = fi.String(v.ID)
+		e.ServerGroup.Members = append(e.ServerGroup.Members, fi.StringValue(e.ID))
+
 		glog.V(2).Infof("Creating a new Openstack instance, id=%s", v.ID)
+
 		return nil
 	}
 

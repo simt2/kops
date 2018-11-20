@@ -140,6 +140,34 @@ func (i *Installation) buildSystemdJob() *nodetasks.Service {
 		buffer.WriteString("\" ")
 	}
 
+	// Pass in required credentials when using user-defined swift endpoint
+	if os.Getenv("OS_AUTH_URL") != "" {
+		buffer.WriteString("\"OS_TENANT_ID=")
+		buffer.WriteString(os.Getenv("OS_TENANT_ID"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_TENANT_NAME=")
+		buffer.WriteString(os.Getenv("OS_TENANT_NAME"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_PROJECT_DOMAIN_NAME=")
+		buffer.WriteString(os.Getenv("OS_PROJECT_DOMAIN_NAME"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_PROJECT_DOMAIN_ID=")
+		buffer.WriteString(os.Getenv("OS_PROJECT_DOMAIN_ID"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_USERNAME=")
+		buffer.WriteString(os.Getenv("OS_USERNAME"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_PASSWORD=")
+		buffer.WriteString(os.Getenv("OS_PASSWORD"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_AUTH_URL=")
+		buffer.WriteString(os.Getenv("OS_AUTH_URL"))
+		buffer.WriteString("\" ")
+		buffer.WriteString("\"OS_REGION_NAME=")
+		buffer.WriteString(os.Getenv("OS_REGION_NAME"))
+		buffer.WriteString("\" ")
+	}
+
 	if os.Getenv("DIGITALOCEAN_ACCESS_TOKEN") != "" {
 		buffer.WriteString("\"DIGITALOCEAN_ACCESS_TOKEN=")
 		buffer.WriteString(os.Getenv("DIGITALOCEAN_ACCESS_TOKEN"))

@@ -35,6 +35,20 @@ type RouterInterface struct {
 	Lifecycle *fi.Lifecycle
 }
 
+// GetDependencies returns the dependencies of the RouterInterface task
+func (e *RouterInterface) GetDependencies(tasks map[string]fi.Task) []fi.Task {
+	var deps []fi.Task
+	for _, task := range tasks {
+		if _, ok := task.(*Router); ok {
+			deps = append(deps, task)
+		}
+		if _, ok := task.(*Subnet); ok {
+			deps = append(deps, task)
+		}
+	}
+	return deps
+}
+
 var _ fi.CompareWithID = &RouterInterface{}
 
 func (i *RouterInterface) CompareWithID() *string {
