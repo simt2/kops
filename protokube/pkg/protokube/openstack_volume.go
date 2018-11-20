@@ -152,6 +152,7 @@ func (a *OpenstackVolumes) discoverTags() error {
 		glog.Infof("Found project=%q", a.project)
 	}
 
+	// FIXME: Disks mounted to masters should be in the same Availability Zone
 	// // Zone
 	// {
 	// 	a.zone = strings.TrimSpace(metadata.AvailabilityZone)

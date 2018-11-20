@@ -108,7 +108,6 @@ func (_ *PoolAssociation) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e,
 
 			var poolAddress string
 			if localAddr, ok := server.Addresses[fi.StringValue(e.InterfaceName)]; ok {
-				type addresses []map[string]interface{}
 
 				if localAddresses, ok := localAddr.([]interface{}); ok {
 					for _, addr := range localAddresses {

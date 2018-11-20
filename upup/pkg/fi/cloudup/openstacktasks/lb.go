@@ -69,10 +69,6 @@ func NewLBTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle,
 	if err != nil {
 		return nil, err
 	}
-	// subnetTask, err := NewSubnetTaskFromCloud(osCloud, lifecycle, sub)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("NewLBTaskFromCloud: Failed to create new subnet task for subnet %s: %v", sub.Name, err)
-	// }
 
 	loadbalancer.ID = fi.String(lb.ID)
 	loadbalancer.Name = fi.String(lb.Name)
