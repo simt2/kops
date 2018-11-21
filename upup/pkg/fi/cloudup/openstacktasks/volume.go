@@ -85,9 +85,9 @@ func (_ *Volume) CheckChanges(a, e, changes *Volume) error {
 		if e.Name == nil {
 			return fi.RequiredField("Name")
 		}
-		// if e.AvailabilityZone == nil {
-		// 	return fi.RequiredField("AvailabilityZone")
-		// }
+		if e.AvailabilityZone == nil {
+			return fi.RequiredField("AvailabilityZone")
+		}
 		if e.VolumeType == nil {
 			return fi.RequiredField("VolumeType")
 		}

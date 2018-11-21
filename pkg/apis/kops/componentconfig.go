@@ -484,15 +484,14 @@ type OpenstackMonitor struct {
 }
 
 type OpenstackConfiguration struct {
-	AuthURL    string `json:"authURL,omitempty"`
-	Username   string `json:"username,omitempty"`
-	Password   string `json:"password,omitempty"`
-	Region     string `json:"region,omitempty"`
-	TenantID   string `json:"tenantID,omitempty"`
-	TenantName string `json:"tenantName,omitempty"`
-	DomainName string `json:"domainName,omitempty"`
-	DomainID   string `json:"domainID,omitempty"`
-	//TODO: DomainID and other vars people may used
+	AuthURL      string                       `json:"authURL,omitempty"`
+	Username     string                       `json:"username,omitempty"`
+	Password     string                       `json:"password,omitempty"`
+	Region       string                       `json:"region,omitempty"`
+	TenantID     string                       `json:"tenantID,omitempty"`
+	TenantName   string                       `json:"tenantName,omitempty"`
+	DomainName   string                       `json:"domainName,omitempty"`
+	DomainID     string                       `json:"domainID,omitempty"`
 	Loadbalancer *OpenstackLoadbalancerConfig `json:"loadbalancer,omitempty"`
 	Monitor      *OpenstackMonitor            `json:"monitor,omitempty"`
 }

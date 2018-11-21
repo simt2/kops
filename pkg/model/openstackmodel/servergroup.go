@@ -17,14 +17,14 @@ limitations under the License.
 package openstackmodel
 
 import (
-	// "bytes"
 	"fmt"
 	"github.com/golang/glog"
 	"k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/pkg/dns"
 	"k8s.io/kops/pkg/model"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup/openstacktasks"
-	// "k8s.io/kops/util/pkg/vfs"
+	"k8s.io/kops/upup/pkg/fi/fitasks"
 	"strings"
 )
 
@@ -165,7 +165,7 @@ func (b *ServerGroupModelBuilder) Build(c *fi.ModelBuilderContext) error {
 	if b.UseLoadBalancerForAPI() {
 		lbSubnetName := b.MasterInstanceGroups()[0].Spec.Subnets[0]
 		lbTask := &openstacktasks.LB{
-			Name:      fi.String(b.Cluster.Spec.MasterInternalName),
+			Name:      fi.String(b.Cluster.Spec.MasterPublicName),
 			Subnet:    fi.String(lbSubnetName),
 			Lifecycle: b.Lifecycle,
 		}
@@ -177,6 +177,18 @@ func (b *ServerGroupModelBuilder) Build(c *fi.ModelBuilderContext) error {
 			Lifecycle: b.Lifecycle,
 		}
 		c.AddTask(lbfipTask)
+
+		if dns.IsGossipHostname(b.Cluster.Name) || b.UsePrivateDNS() {
+			// Ensure the floating IP is included in the TLS certificate,
+			// if we're not going to use an alias for it
+			// TODO: I don't love this technique for finding the task by name & modifying it
+			masterKeypairTask, found := c.Tasks["Keypair/master"]
+			if !found {
+				return fmt.Errorf("keypair/master task not found")
+			}
+			masterKeypair := masterKeypairTask.(*fitasks.Keypair)
+			masterKeypair.AlternateNameTasks = append(masterKeypair.AlternateNameTasks, lbfipTask)
+		}
 
 		poolTask := &openstacktasks.LBPool{
 			Name:         fi.String(fmt.Sprintf("%s-https", fi.StringValue(lbTask.Name))),

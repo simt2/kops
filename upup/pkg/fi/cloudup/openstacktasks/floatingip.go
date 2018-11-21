@@ -35,6 +35,27 @@ type FloatingIP struct {
 	Lifecycle *fi.Lifecycle
 }
 
+var _ fi.HasAddress = &FloatingIP{}
+
+func (e *FloatingIP) FindIPAddress(context *fi.Context) (*string, error) {
+	if e.ID == nil {
+		if e.Server != nil && e.Server.ID == nil {
+			return nil, nil
+		}
+		if e.LB != nil && e.LB.ID == nil {
+			return nil, nil
+		}
+	}
+
+	cloud := context.Cloud.(openstack.OpenstackCloud)
+
+	fip, err := floatingips.Get(cloud.ComputeClient(), fi.StringValue(e.ID)).Extract()
+	if err != nil {
+		return nil, err
+	}
+	return &fip.IP, nil
+}
+
 // GetDependencies returns the dependencies of the Instance task
 func (e *FloatingIP) GetDependencies(tasks map[string]fi.Task) []fi.Task {
 	var deps []fi.Task

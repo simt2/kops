@@ -49,6 +49,8 @@ import (
 	"k8s.io/kops/pkg/cloudinstances"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
+	// TODO: Bypass Designate
+	// "k8s.io/kops/pkg/dns"
 )
 
 const TagNameEtcdClusterPrefix = "k8s.io/etcd/"
@@ -1031,27 +1033,29 @@ func (c *openstackCloud) ListFloatingIPs() ([]floatingips.FloatingIP, error) {
 func (c *openstackCloud) GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiIngressStatus, error) {
 	var ingresses []kops.ApiIngressStatus
 
-	// Note that this must match OpenstackModel lb name
-	glog.V(2).Infof("Querying Openstack to find Loadbalancers for API (%q)", cluster.Name)
-	lbList, err := c.ListLBs(loadbalancers.ListOpts{
-		Name: cluster.Spec.MasterInternalName,
-	})
-	if err != nil {
-		return ingresses, fmt.Errorf("GetApiIngressStatus: Failed to list openstack loadbalancers: %v", err)
-	}
-	for _, lb := range lbList {
-		// Must Find Floating IP related to this lb
-		fips, err := c.ListFloatingIPs()
+	if cluster.Spec.MasterPublicName != "" {
+		// Note that this must match OpenstackModel lb name
+		glog.V(2).Infof("Querying Openstack to find Loadbalancers for API (%q)", cluster.Name)
+		lbList, err := c.ListLBs(loadbalancers.ListOpts{
+			Name: cluster.Spec.MasterPublicName,
+		})
 		if err != nil {
-			return ingresses, err
+			return ingresses, fmt.Errorf("GetApiIngressStatus: Failed to list openstack loadbalancers: %v", err)
 		}
-		for _, fip := range fips {
-			if fip.FixedIP == lb.VipAddress {
+		for _, lb := range lbList {
+			// Must Find Floating IP related to this lb
+			fips, err := c.ListFloatingIPs()
+			if err != nil {
+				return ingresses, err
+			}
+			for _, fip := range fips {
+				if fip.FixedIP == lb.VipAddress {
 
-				ingresses = append(ingresses, kops.ApiIngressStatus{
-					IP: fip.IP,
-				})
-				break
+					ingresses = append(ingresses, kops.ApiIngressStatus{
+						IP: fip.IP,
+					})
+					break
+				}
 			}
 		}
 	}
