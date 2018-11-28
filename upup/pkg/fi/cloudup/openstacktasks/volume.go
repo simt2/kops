@@ -68,6 +68,7 @@ func (c *Volume) Find(context *fi.Context) (*Volume, error) {
 		Tags:             v.Metadata,
 		Lifecycle:        c.Lifecycle,
 	}
+	c.ID = actual.ID
 	return actual, nil
 }
 

@@ -51,7 +51,6 @@ func (n *Network) Find(context *fi.Context) (*Network, error) {
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 	opt := networks.ListOpts{
 		Name: fi.StringValue(n.Name),
-		ID:   fi.StringValue(n.ID),
 	}
 	ns, err := cloud.ListNetworks(opt)
 	if err != nil {
@@ -63,7 +62,12 @@ func (n *Network) Find(context *fi.Context) (*Network, error) {
 		return nil, fmt.Errorf("found multiple networks with name: %s", fi.StringValue(n.Name))
 	}
 	v := ns[0]
-	return NewNetworkTaskFromCloud(cloud, n.Lifecycle, &v)
+	actual, err := NewNetworkTaskFromCloud(cloud, n.Lifecycle, &v)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create new Network object: %v", err)
+	}
+	n.ID = actual.ID
+	return actual, nil
 }
 
 func (c *Network) Run(context *fi.Context) error {
@@ -76,6 +80,8 @@ func (_ *Network) CheckChanges(a, e, changes *Network) error {
 			return fi.RequiredField("Name")
 		}
 	} else {
+		println(fmt.Sprintf("a.ID: %s \t e.ID: %s", *a.ID, *e.ID))
+		println(fmt.Sprintf("a.Name: %s \t e.Name: %s", *a.Name, *e.Name))
 		if changes.ID != nil {
 			return fi.CannotChangeField("ID")
 		}

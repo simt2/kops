@@ -52,21 +52,24 @@ func (s *Subnet) CompareWithID() *string {
 	return s.ID
 }
 
-func NewSubnetTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, subnet *subnets.Subnet) (*Subnet, error) {
+func NewSubnetTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, subnet *subnets.Subnet, find *Subnet) (*Subnet, error) {
 
 	network, err := cloud.GetNetwork(subnet.NetworkID)
 	if err != nil {
 		return nil, fmt.Errorf("NewSubnetTaskFromCloud: Failed to get network with ID %s: %v", subnet.NetworkID, err)
 	}
 	networkTask, err := NewNetworkTaskFromCloud(cloud, lifecycle, network)
-	task := &Subnet{
+	actual := &Subnet{
 		ID:        fi.String(subnet.ID),
 		Name:      fi.String(subnet.Name),
 		Network:   networkTask,
 		CIDR:      fi.String(subnet.CIDR),
 		Lifecycle: lifecycle,
 	}
-	return task, nil
+	if find != nil {
+		find.ID = actual.ID
+	}
+	return actual, nil
 }
 
 func (s *Subnet) Find(context *fi.Context) (*Subnet, error) {
@@ -88,8 +91,7 @@ func (s *Subnet) Find(context *fi.Context) (*Subnet, error) {
 	} else if len(rs) != 1 {
 		return nil, fmt.Errorf("found multiple subnets with name: %s", fi.StringValue(s.Name))
 	}
-	v := rs[0]
-	return NewSubnetTaskFromCloud(cloud, s.Lifecycle, &v)
+	return NewSubnetTaskFromCloud(cloud, s.Lifecycle, &rs[0], s)
 }
 
 func (s *Subnet) Run(context *fi.Context) error {

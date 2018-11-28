@@ -66,6 +66,10 @@ func (p *PoolAssociation) Find(context *fi.Context) (*PoolAssociation, error) {
 		return nil, nil
 	}
 
+	if p.ServerGroup != nil {
+
+	}
+
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 	// TODO: Move to cloud
 	_, err := pools.Get(cloud.LoadBalancerClient(), fi.StringValue(p.ID)).Extract()
@@ -133,21 +137,28 @@ func (_ *PoolAssociation) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e,
 				return fmt.Errorf("Failed to get fixed ip for associated pool: %v", err)
 			}
 
-			association, err := v2pools.CreateMember(t.Cloud.NetworkingClient(), fi.StringValue(e.Pool.ID), v2pools.CreateMemberOpts{
-				Name:         fi.StringValue(e.Name),
-				ProtocolPort: fi.IntValue(e.ProtocolPort),
-				SubnetID:     fi.StringValue(e.Pool.Loadbalancer.VipSubnet),
-				Address:      poolAddress,
-			}).Extract()
-			if err != nil {
-				return fmt.Errorf("Failed to address %s to pool %s: %v", poolAddress, fi.StringValue(e.Name), err)
+			//TODO: This becomes difficult as there are actually multiple ID's associated to this one task
+			pool, err := v2pools.GetMember(t.Cloud.NetworkingClient(), fi.StringValue(e.Pool.ID), server.ID).Extract()
+			if err != nil || pool == nil {
+				association, err := v2pools.CreateMember(t.Cloud.NetworkingClient(), fi.StringValue(e.Pool.ID), v2pools.CreateMemberOpts{
+					Name:         fi.StringValue(e.Name),
+					ProtocolPort: fi.IntValue(e.ProtocolPort),
+					SubnetID:     fi.StringValue(e.Pool.Loadbalancer.VipSubnet),
+					Address:      poolAddress,
+				}).Extract()
+				if err != nil {
+					return fmt.Errorf("Failed to address %s to pool %s: %v", poolAddress, fi.StringValue(e.Name), err)
+				}
+				e.ID = fi.String(association.ID)
 			}
-			e.ID = fi.String(association.ID)
 		}
 
 		return nil
+	} else {
+		//TODO: Update Member
+		glog.V(2).Infof("Openstack task PoolAssociation::RenderOpenstack Update not implemented!")
 	}
 
-	glog.V(2).Infof("Openstack task LB::RenderOpenstack did nothing")
+	glog.V(2).Infof("Openstack task PoolAssociation::RenderOpenstack did nothing")
 	return nil
 }

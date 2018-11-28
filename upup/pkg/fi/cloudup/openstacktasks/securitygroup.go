@@ -65,6 +65,7 @@ func (s *SecurityGroup) getSecurityGroupByName(cloud openstack.OpenstackCloud) (
 		Description: fi.String(g.Description),
 		Lifecycle:   s.Lifecycle,
 	}
+	s.ID = actual.ID
 	return actual, nil
 }
 

@@ -103,6 +103,7 @@ func (r *SecurityGroupRule) Find(context *fi.Context) (*SecurityGroupRule, error
 		SecGroup:       &SecurityGroup{ID: fi.String(rule.SecGroupID)},
 		Lifecycle:      r.Lifecycle,
 	}
+	r.ID = actual.ID
 	return actual, nil
 }
 

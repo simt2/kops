@@ -82,22 +82,68 @@ func (e *FloatingIP) CompareWithID() *string {
 }
 
 func (e *FloatingIP) Find(c *fi.Context) (*FloatingIP, error) {
-	if e == nil || e.ID == nil {
+	if e == nil {
 		return nil, nil
 	}
-	id := *(e.ID)
-	// FIXME:
-	v, err := floatingips.Get(c.Cloud.(openstack.OpenstackCloud).ComputeClient(), id).Extract()
-	if err != nil {
-		return nil, fmt.Errorf("error finding server with id %s: %v", id, err)
+	cloud := c.Cloud.(openstack.OpenstackCloud)
+	if e.LB != nil {
+		// Layer 3
+		fipPage, err := l3floatingip.List(cloud.NetworkingClient(), l3floatingip.ListOpts{
+			PortID: fi.StringValue(e.LB.PortID),
+		}).AllPages()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to list layer 3 floating ip's for port ID %s: %v", fi.StringValue(e.LB.PortID), err)
+		}
+		fips, err := l3floatingip.ExtractFloatingIPs(fipPage)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to extract layer 3 floating ip's: %v", err)
+		}
+		if len(fips) == 0 {
+			return nil, nil
+		}
+		if len(fips) > 1 {
+			return nil, fmt.Errorf("Multiple floating ip's associated to port: %s", fi.StringValue(e.LB.PortID))
+		}
+		actual := &FloatingIP{
+			Name:      e.Name,
+			ID:        fi.String(fips[0].ID),
+			LB:        e.LB,
+			Lifecycle: e.Lifecycle,
+		}
+		e.ID = actual.ID
+		return actual, nil
+	} else if e.Server != nil {
+		fipPage, err := floatingips.List(cloud.ComputeClient()).AllPages()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to list floating ip's: %v", err)
+		}
+		fips, err := floatingips.ExtractFloatingIPs(fipPage)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to extract floating ip's: %v", err)
+		}
+		if len(fips) == 0 {
+			return nil, nil
+		}
+		var actual *FloatingIP
+		for _, fip := range fips {
+			if fip.InstanceID == fi.StringValue(e.Server.ID) {
+				if actual != nil {
+					return nil, fmt.Errorf("Multiple floating ip's associated to server: %s", fi.StringValue(e.Server.ID))
+				}
+				actual = &FloatingIP{
+					Name:      e.Name,
+					ID:        fi.String(fips[0].ID),
+					Server:    e.Server,
+					Lifecycle: e.Lifecycle,
+				}
+			}
+		}
+		if actual != nil {
+			e.ID = actual.ID
+		}
+		return actual, nil
 	}
-
-	a := new(FloatingIP)
-	a.ID = fi.String(v.ID)
-	a.Name = fi.String(v.ID)
-	a.Lifecycle = e.Lifecycle
-
-	return a, nil
+	return nil, nil
 }
 
 func (e *FloatingIP) Run(c *fi.Context) error {

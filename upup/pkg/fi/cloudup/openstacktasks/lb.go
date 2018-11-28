@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
-	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/listeners"
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"k8s.io/kops/upup/pkg/fi"
@@ -29,10 +28,8 @@ import (
 
 //go:generate fitask -type=LB
 type LB struct {
-	ID   *string
-	Name *string
-	// find will need listeners, pools, and floating ip
-	Listener  *listeners.Listener
+	ID        *string
+	Name      *string
 	Subnet    *string
 	VipSubnet *string
 	Lifecycle *fi.Lifecycle
@@ -62,33 +59,52 @@ func (s *LB) CompareWithID() *string {
 	return s.ID
 }
 
-func NewLBTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, lb *loadbalancers.LoadBalancer) (*LB, error) {
-	var loadbalancer LB
+func NewLBTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, lb *loadbalancers.LoadBalancer, find *LB) (*LB, error) {
 	osCloud := cloud.(openstack.OpenstackCloud)
 	sub, err := subnets.Get(osCloud.NetworkingClient(), lb.VipSubnetID).Extract()
 	if err != nil {
 		return nil, err
 	}
 
-	loadbalancer.ID = fi.String(lb.ID)
-	loadbalancer.Name = fi.String(lb.Name)
-	loadbalancer.Lifecycle = lifecycle
-	loadbalancer.Subnet = fi.String(sub.Name)
-	return &loadbalancer, nil
+	actual := &LB{
+		ID:        fi.String(lb.ID),
+		Name:      fi.String(lb.Name),
+		Lifecycle: lifecycle,
+		PortID:    fi.String(lb.VipPortID),
+		Subnet:    fi.String(sub.Name),
+	}
+
+	if find != nil {
+		find.ID = actual.ID
+		find.PortID = fi.String(lb.VipPortID)
+	}
+	return actual, nil
 }
 
 func (s *LB) Find(context *fi.Context) (*LB, error) {
-	if s.ID == nil {
+	if s.Name == nil {
 		return nil, nil
 	}
 
 	cloud := context.Cloud.(openstack.OpenstackCloud)
-	lb, err := loadbalancers.Get(cloud.LoadBalancerClient(), fi.StringValue(s.ID)).Extract()
+	lbPage, err := loadbalancers.List(cloud.LoadBalancerClient(), loadbalancers.ListOpts{
+		Name: fi.StringValue(s.Name),
+	}).AllPages()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to retrieve loadbalancers for name %s: %v", fi.StringValue(s.Name), err)
+	}
+	lbs, err := loadbalancers.ExtractLoadBalancers(lbPage)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to extract loadbalancers : %v", err)
+	}
+	if len(lbs) == 0 {
+		return nil, nil
+	}
+	if len(lbs) > 1 {
+		return nil, fmt.Errorf("Multiple load balancers for name %s", fi.StringValue(s.Name))
 	}
 
-	return NewLBTaskFromCloud(cloud, s.Lifecycle, lb)
+	return NewLBTaskFromCloud(cloud, s.Lifecycle, &lbs[0], s)
 }
 
 func (s *LB) Run(context *fi.Context) error {

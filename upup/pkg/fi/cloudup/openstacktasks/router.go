@@ -38,6 +38,18 @@ func (n *Router) CompareWithID() *string {
 	return n.ID
 }
 
+func NewRouterTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, router *routers.Router, find *Router) (*Router, error) {
+	actual := &Router{
+		ID:        fi.String(router.ID),
+		Name:      fi.String(router.Name),
+		Lifecycle: lifecycle,
+	}
+	if find != nil {
+		find.ID = actual.ID
+	}
+	return actual, nil
+}
+
 func (n *Router) Find(context *fi.Context) (*Router, error) {
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 	opt := routers.ListOpts{
@@ -53,13 +65,7 @@ func (n *Router) Find(context *fi.Context) (*Router, error) {
 	} else if len(rs) != 1 {
 		return nil, fmt.Errorf("found multiple routers with name: %s", fi.StringValue(n.Name))
 	}
-	v := rs[0]
-	actual := &Router{
-		ID:        fi.String(v.ID),
-		Name:      fi.String(v.Name),
-		Lifecycle: n.Lifecycle,
-	}
-	return actual, nil
+	return NewRouterTaskFromCloud(cloud, n.Lifecycle, &rs[0], n)
 }
 
 func (c *Router) Run(context *fi.Context) error {

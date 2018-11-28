@@ -50,7 +50,7 @@ func (s *LBPool) CompareWithID() *string {
 	return s.ID
 }
 
-func NewLBPoolTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, pool *pools.Pool) (*LBPool, error) {
+func NewLBPoolTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, pool *pools.Pool, find *LBPool) (*LBPool, error) {
 
 	if len(pool.Loadbalancers) > 1 {
 		return nil, fmt.Errorf("Openstack cloud pools with multiple loadbalancers not yet supported!")
@@ -66,28 +66,43 @@ func NewLBPoolTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecy
 		if err != nil {
 			return nil, fmt.Errorf("NewLBPoolTaskFromCloud: Failed to get lb with id %s: %v", lbID.ID, err)
 		}
-		loadbalancerTask, err := NewLBTaskFromCloud(cloud, lifecycle, lb)
+		loadbalancerTask, err := NewLBTaskFromCloud(cloud, lifecycle, lb, nil)
 		if err != nil {
 			return nil, err
 		}
 		a.Loadbalancer = loadbalancerTask
 	}
+	if find != nil {
+		find.ID = a.ID
+	}
 	return a, nil
 }
 
 func (p *LBPool) Find(context *fi.Context) (*LBPool, error) {
-	if p.ID == nil {
+	if p.Name == nil {
 		return nil, nil
 	}
 
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 	// TODO: Move to cloud
-	pool, err := pools.Get(cloud.LoadBalancerClient(), fi.StringValue(p.ID)).Extract()
+	poolPage, err := pools.List(cloud.LoadBalancerClient(), pools.ListOpts{
+		Name: fi.StringValue(p.Name),
+	}).AllPages()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to list pools for name %s: %v", fi.StringValue(p.Name), err)
+	}
+	poolList, err := pools.ExtractPools(poolPage)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to extract pools: %v", err)
+	}
+	if len(poolList) == 0 {
+		return nil, nil
+	}
+	if len(poolList) > 1 {
+		return nil, fmt.Errorf("Multiple pools found for name %s", fi.StringValue(p.Name))
 	}
 
-	return NewLBPoolTaskFromCloud(cloud, p.Lifecycle, pool)
+	return NewLBPoolTaskFromCloud(cloud, p.Lifecycle, &poolList[0], p)
 }
 
 func (s *LBPool) Run(context *fi.Context) error {

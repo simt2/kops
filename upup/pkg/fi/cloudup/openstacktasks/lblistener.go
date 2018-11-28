@@ -54,7 +54,7 @@ func (s *LBListener) CompareWithID() *string {
 	return s.ID
 }
 
-func NewLBListenerTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, lb *listeners.Listener) (*LBListener, error) {
+func NewLBListenerTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, lb *listeners.Listener, find *LBListener) (*LBListener, error) {
 
 	listenerTask := &LBListener{
 		ID:        fi.String(lb.ID),
@@ -63,7 +63,7 @@ func NewLBListenerTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Li
 	}
 
 	for _, pool := range lb.Pools {
-		poolTask, err := NewLBPoolTaskFromCloud(cloud, lifecycle, &pool)
+		poolTask, err := NewLBPoolTaskFromCloud(cloud, lifecycle, &pool, nil)
 		if err != nil {
 			return nil, fmt.Errorf("NewLBListenerTaskFromCloud: Failed to create new LBListener task for pool %s: %v", pool.Name, err)
 		}
@@ -71,21 +71,36 @@ func NewLBListenerTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Li
 		// TODO: Support Multiple?
 		break
 	}
+	if find != nil {
+		find.ID = listenerTask.ID
+	}
 	return listenerTask, nil
 }
 
 func (s *LBListener) Find(context *fi.Context) (*LBListener, error) {
-	if s.ID == nil {
+	if s.Name == nil {
 		return nil, nil
 	}
 
 	cloud := context.Cloud.(openstack.OpenstackCloud)
-	lb, err := listeners.Get(cloud.LoadBalancerClient(), fi.StringValue(s.ID)).Extract()
+	listenerPage, err := listeners.List(cloud.LoadBalancerClient(), listeners.ListOpts{
+		Name: fi.StringValue(s.Name),
+	}).AllPages()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to list loadbalancer listeners for name %s: %v", fi.StringValue(s.Name), err)
+	}
+	listeners, err := listeners.ExtractListeners(listenerPage)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to extract loadbalancer listeners: %v", err)
+	}
+	if len(listeners) == 0 {
+		return nil, nil
+	}
+	if len(listeners) > 1 {
+		return nil, fmt.Errorf("Multiple listeners found with name %s", fi.StringValue(s.Name))
 	}
 
-	return NewLBListenerTaskFromCloud(cloud, s.Lifecycle, lb)
+	return NewLBListenerTaskFromCloud(cloud, s.Lifecycle, &listeners[0], s)
 }
 
 func (s *LBListener) Run(context *fi.Context) error {

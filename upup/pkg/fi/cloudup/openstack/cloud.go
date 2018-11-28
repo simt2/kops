@@ -19,6 +19,7 @@ package openstack
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/drekle/kops/pkg/dns"
 	"net/http"
 	"time"
 
@@ -252,16 +253,19 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 		return nil, fmt.Errorf("error building nova client: %v", err)
 	}
 
-	// FIXME:
-	// endpointOpt, err = config.GetServiceConfig("Designate")
-	// if err != nil {
-	// 	return nil, err
-	// }
-	//
-	// dnsClient, err := os.NewDNSV2(provider, endpointOpt)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("error building dns client: %v", err)
-	// }
+	var dnsClient *gophercloud.ServiceClient
+	if !dns.IsGossipHostname(tags["KubernetesCluster"]) {
+
+		endpointOpt, err := config.GetServiceConfig("Designate")
+		if err != nil {
+			return nil, err
+		}
+
+		dnsClient, err = os.NewDNSV2(provider, endpointOpt)
+		if err != nil {
+			return nil, fmt.Errorf("error building dns client: %v", err)
+		}
+	}
 
 	lbClient, err := os.NewLoadBalancerV2(provider, gophercloud.EndpointOpts{
 		Type:   "network",
@@ -276,15 +280,12 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 		neutronClient: neutronClient,
 		novaClient:    novaClient,
 		lbClient:      lbClient,
-		// FIXME
-		// dnsClient:     dnsClient,
-		tags:   tags,
-		region: region,
+		dnsClient:     dnsClient,
+		tags:          tags,
+		region:        region,
 	}
 
 	var defaultLB kops.OpenstackLoadbalancerConfig = kops.OpenstackLoadbalancerConfig{
-		// FIXME: ?
-		// FloatingNetwork: lbClient.Endpoint,
 		Method:     "ROUND_ROBIN",
 		Provider:   "haproxy",
 		UseOctavia: false,
@@ -1054,7 +1055,6 @@ func (c *openstackCloud) GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiI
 					ingresses = append(ingresses, kops.ApiIngressStatus{
 						IP: fip.IP,
 					})
-					break
 				}
 			}
 		}
