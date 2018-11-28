@@ -50,8 +50,14 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 
 	var igUserData *string
 	igMeta := make(map[string]string)
-	// Must match protokube openstack volume and gossip seeds.
-	igMeta["cluster_name"] = b.ClusterName()
+
+	if ig.Spec.Role != kops.InstanceGroupRoleBastion {
+		// Bastion does not belong to the cluster and will not be running protokube.
+
+		// Must match protokube openstack volume and gossip seeds.
+		igMeta["cluster_name"] = b.ClusterName()
+	}
+
 	startupScript, err := b.BootstrapScript.ResourceNodeUp(ig, b.Cluster)
 	if err != nil {
 		return fmt.Errorf("Could not create startup script for instance group %s: %v", ig.Name, err)
