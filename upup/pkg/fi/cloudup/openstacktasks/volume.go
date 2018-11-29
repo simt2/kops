@@ -21,6 +21,7 @@ import (
 
 	"github.com/golang/glog"
 	cinderv2 "github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
+	az "github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/availabilityzones"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup/openstack"
 )
@@ -116,9 +117,33 @@ func (_ *Volume) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes 
 	if a == nil {
 		glog.V(2).Infof("Creating PersistentVolume with Name:%q", fi.StringValue(e.Name))
 
+		// TODO: This is less than desirable, but openstack differs here
+		// Check to see if the availability zone exists.
+		azPage, err := az.List(t.Cloud.BlockStorageClient()).AllPages()
+		if err != nil {
+			return fmt.Errorf("Failed to list storage availability zones: %v", err)
+		}
+		azList, err := az.ExtractAvailabilityZones(azPage)
+		if err != nil {
+			return fmt.Errorf("Failed to extract storage availability zones: %v", err)
+		}
+		var storageAvailabilityZone *string
+		for _, az := range azList {
+			if az.Name == fi.StringValue(a.AvailabilityZone) {
+				storageAvailabilityZone = a.AvailabilityZone
+			}
+		}
+		if storageAvailabilityZone == nil {
+			// Determine if there is a meaningful storage AZ here
+			if len(azList) == 1 {
+				storageAvailabilityZone = fi.String(azList[0].Name)
+			}
+			// TODO: Potentially no other way to map availability zones to compute nodes ?
+		}
+
 		opt := cinderv2.CreateOpts{
 			Size:             int(*e.SizeGB),
-			AvailabilityZone: fi.StringValue(e.AvailabilityZone),
+			AvailabilityZone: fi.StringValue(storageAvailabilityZone),
 			Metadata:         e.Tags,
 			Name:             fi.StringValue(e.Name),
 			VolumeType:       fi.StringValue(e.VolumeType),

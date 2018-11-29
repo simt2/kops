@@ -241,10 +241,6 @@ func (b *MasterVolumeBuilder) addOpenstackVolume(c *fi.ModelBuilderContext, name
 		return fmt.Errorf("Must set ETCDMemberSpec.VolumeType on Openstack platform")
 	}
 
-	// FIXME: Zone mismatch on our openstack service.
-	//  Should support only 1-to-1 regions here
-	zone = "nova"
-
 	// The tags are how protokube knows to mount the volume and use it for etcd
 	tags := make(map[string]string)
 	// Apply all user defined labels on the volumes

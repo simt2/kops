@@ -86,7 +86,7 @@ func (e *FloatingIP) Find(c *fi.Context) (*FloatingIP, error) {
 		return nil, nil
 	}
 	cloud := c.Cloud.(openstack.OpenstackCloud)
-	if e.LB != nil {
+	if e.LB != nil && e.LB.PortID != nil {
 		// Layer 3
 		fipPage, err := l3floatingip.List(cloud.NetworkingClient(), l3floatingip.ListOpts{
 			PortID: fi.StringValue(e.LB.PortID),
