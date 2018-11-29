@@ -92,15 +92,18 @@ func getLocalMetadata() (*InstanceMetadata, error) {
 // NewOpenstackVolumes builds a OpenstackVolume
 func NewOpenstackVolumes() (*OpenstackVolumes, error) {
 
-	tags := make(map[string]string)
-	oscloud, err := openstack.NewOpenstackCloud(tags, nil)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to initialize OpenstackVolumes: %v", err)
-	}
-
 	metadata, err := getLocalMetadata()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get server metadata: %v", err)
+	}
+
+	tags := make(map[string]string)
+	// Cluster name needed to bypass missing designate options
+	tags["KubernetesCluster"] = metadata.UserMeta.ClusterName
+
+	oscloud, err := openstack.NewOpenstackCloud(tags, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to initialize OpenstackVolumes: %v", err)
 	}
 
 	a := &OpenstackVolumes{
