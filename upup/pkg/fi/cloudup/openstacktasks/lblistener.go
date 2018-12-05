@@ -83,24 +83,21 @@ func (s *LBListener) Find(context *fi.Context) (*LBListener, error) {
 	}
 
 	cloud := context.Cloud.(openstack.OpenstackCloud)
-	listenerPage, err := listeners.List(cloud.LoadBalancerClient(), listeners.ListOpts{
+	listenerList, err := cloud.ListListeners(listeners.ListOpts{
+		ID:   fi.StringValue(s.ID),
 		Name: fi.StringValue(s.Name),
-	}).AllPages()
+	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to list loadbalancer listeners for name %s: %v", fi.StringValue(s.Name), err)
 	}
-	listeners, err := listeners.ExtractListeners(listenerPage)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to extract loadbalancer listeners: %v", err)
-	}
-	if len(listeners) == 0 {
+	if len(listenerList) == 0 {
 		return nil, nil
 	}
-	if len(listeners) > 1 {
+	if len(listenerList) > 1 {
 		return nil, fmt.Errorf("Multiple listeners found with name %s", fi.StringValue(s.Name))
 	}
 
-	return NewLBListenerTaskFromCloud(cloud, s.Lifecycle, &listeners[0], s)
+	return NewLBListenerTaskFromCloud(cloud, s.Lifecycle, &listenerList[0], s)
 }
 
 func (s *LBListener) Run(context *fi.Context) error {
@@ -133,7 +130,7 @@ func (_ *LBListener) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, chan
 			Protocol:       listeners.ProtocolTCP,
 			ProtocolPort:   443,
 		}
-		listener, err := listeners.Create(t.Cloud.LoadBalancerClient(), listeneropts).Extract()
+		listener, err := t.Cloud.CreateListener(listeneropts)
 		if err != nil {
 			return fmt.Errorf("error creating LB listener: %v", err)
 		}

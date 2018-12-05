@@ -21,8 +21,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 
 	"github.com/golang/glog"
-	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
-	v2pools "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/lbaas_v2/pools"
+	v2pools "github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup/openstack"
 )
@@ -62,22 +61,7 @@ func (s *PoolAssociation) CompareWithID() *string {
 }
 
 func (p *PoolAssociation) Find(context *fi.Context) (*PoolAssociation, error) {
-	if p.ID == nil {
-		return nil, nil
-	}
-
-	if p.ServerGroup != nil {
-
-	}
-
-	cloud := context.Cloud.(openstack.OpenstackCloud)
-	// TODO: Move to cloud
-	_, err := pools.Get(cloud.LoadBalancerClient(), fi.StringValue(p.ID)).Extract()
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO:
+	// Task throws no errors for members which already exist in the provided pool
 	return nil, nil
 }
 
@@ -110,52 +94,25 @@ func (_ *PoolAssociation) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e,
 				return fmt.Errorf("Failed to find server with id `%s`: %v", serverID, err)
 			}
 
-			var poolAddress string
-			if localAddr, ok := server.Addresses[fi.StringValue(e.InterfaceName)]; ok {
-
-				if localAddresses, ok := localAddr.([]interface{}); ok {
-					for _, addr := range localAddresses {
-						addrMap := addr.(map[string]interface{})
-						if addrType, ok := addrMap["OS-EXT-IPS:type"]; ok && addrType == "fixed" {
-							if fixedIP, ok := addrMap["addr"]; ok {
-								if fixedIPStr, ok := fixedIP.(string); ok {
-									poolAddress = fixedIPStr
-								} else {
-									err = fmt.Errorf("Fixed IP was not a string: %v", fixedIP)
-								}
-							} else {
-								err = fmt.Errorf("Type fixed did not contain addr: %v", addr)
-							}
-						}
-					}
-				}
-			} else {
-				err = fmt.Errorf("Server `%s` interface name `%s` not found!", serverID, fi.StringValue(e.InterfaceName))
-			}
+			poolAddress, err := openstack.GetServerFixedIP(server, fi.StringValue(e.InterfaceName))
 
 			if err != nil {
 				return fmt.Errorf("Failed to get fixed ip for associated pool: %v", err)
 			}
 
+			pool, err := t.Cloud.AssociateToPool(server, fi.StringValue(e.Pool.ID), v2pools.CreateMemberOpts{
+				Name:         fi.StringValue(e.Name),
+				ProtocolPort: fi.IntValue(e.ProtocolPort),
+				SubnetID:     fi.StringValue(e.Pool.Loadbalancer.VipSubnet),
+				Address:      poolAddress,
+			})
 			//TODO: This becomes difficult as there are actually multiple ID's associated to this one task
-			pool, err := v2pools.GetMember(t.Cloud.NetworkingClient(), fi.StringValue(e.Pool.ID), server.ID).Extract()
-			if err != nil || pool == nil {
-				association, err := v2pools.CreateMember(t.Cloud.NetworkingClient(), fi.StringValue(e.Pool.ID), v2pools.CreateMemberOpts{
-					Name:         fi.StringValue(e.Name),
-					ProtocolPort: fi.IntValue(e.ProtocolPort),
-					SubnetID:     fi.StringValue(e.Pool.Loadbalancer.VipSubnet),
-					Address:      poolAddress,
-				}).Extract()
-				if err != nil {
-					return fmt.Errorf("Failed to address %s to pool %s: %v", poolAddress, fi.StringValue(e.Name), err)
-				}
-				e.ID = fi.String(association.ID)
-			}
+			e.ID = fi.String(pool.ID)
 		}
 
 		return nil
 	} else {
-		//TODO: Update Member
+		//TODO: Update Member, this is covered as `a` will always be nil
 		glog.V(2).Infof("Openstack task PoolAssociation::RenderOpenstack Update not implemented!")
 	}
 

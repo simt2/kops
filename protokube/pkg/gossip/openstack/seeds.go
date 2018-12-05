@@ -54,6 +54,7 @@ func (p *SeedProvider) GetSeeds() ([]string, error) {
 					if localAddresses, ok := localAddr.([]interface{}); ok {
 						for _, addr := range localAddresses {
 							addrMap := addr.(map[string]interface{})
+							// TODO: May have multiple fixed
 							if addrType, ok := addrMap["OS-EXT-IPS:type"]; ok && addrType == "fixed" {
 								if fixedIP, ok := addrMap["addr"]; ok {
 									if fixedIPStr, ok := fixedIP.(string); ok {

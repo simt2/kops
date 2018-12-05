@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
-	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
+	v2pools "github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup/openstack"
 )
@@ -50,7 +50,7 @@ func (s *LBPool) CompareWithID() *string {
 	return s.ID
 }
 
-func NewLBPoolTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, pool *pools.Pool, find *LBPool) (*LBPool, error) {
+func NewLBPoolTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycle, pool *v2pools.Pool, find *LBPool) (*LBPool, error) {
 
 	if len(pool.Loadbalancers) > 1 {
 		return nil, fmt.Errorf("Openstack cloud pools with multiple loadbalancers not yet supported!")
@@ -79,21 +79,17 @@ func NewLBPoolTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecy
 }
 
 func (p *LBPool) Find(context *fi.Context) (*LBPool, error) {
-	if p.Name == nil {
+	if p.Name == nil && p.ID == nil {
 		return nil, nil
 	}
 
 	cloud := context.Cloud.(openstack.OpenstackCloud)
-	// TODO: Move to cloud
-	poolPage, err := pools.List(cloud.LoadBalancerClient(), pools.ListOpts{
+	poolList, err := cloud.ListPools(v2pools.ListOpts{
+		ID:   fi.StringValue(p.ID),
 		Name: fi.StringValue(p.Name),
-	}).AllPages()
+	})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to list pools for name %s: %v", fi.StringValue(p.Name), err)
-	}
-	poolList, err := pools.ExtractPools(poolPage)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to extract pools: %v", err)
+		return nil, fmt.Errorf("Failed to list pools: %v", err)
 	}
 	if len(poolList) == 0 {
 		return nil, nil
@@ -128,13 +124,13 @@ func (_ *LBPool) CheckChanges(a, e, changes *LBPool) error {
 func (_ *LBPool) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes *LBPool) error {
 	if a == nil {
 
-		poolopts := pools.CreateOpts{
+		poolopts := v2pools.CreateOpts{
 			Name:           fi.StringValue(e.Name),
-			LBMethod:       pools.LBMethodRoundRobin,
-			Protocol:       pools.ProtocolTCP,
+			LBMethod:       v2pools.LBMethodRoundRobin,
+			Protocol:       v2pools.ProtocolTCP,
 			LoadbalancerID: fi.StringValue(e.Loadbalancer.ID),
 		}
-		pool, err := pools.Create(t.Cloud.LoadBalancerClient(), poolopts).Extract()
+		pool, err := t.Cloud.CreatePool(poolopts)
 		if err != nil {
 			return fmt.Errorf("error creating LB pool: %v", err)
 		}

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/drekle/kops/pkg/dns"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/golang/glog"
@@ -30,10 +31,14 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/volumeattach"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
+	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/listeners"
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
+	v2pools "github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/external"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	sg "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
@@ -41,6 +46,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	az "github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/availabilityzones"
 	"github.com/gophercloud/gophercloud/pagination"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -50,8 +56,6 @@ import (
 	"k8s.io/kops/pkg/cloudinstances"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
-	// TODO: Bypass Designate
-	// "k8s.io/kops/pkg/dns"
 )
 
 const TagNameEtcdClusterPrefix = "k8s.io/etcd/"
@@ -104,6 +108,8 @@ type OpenstackCloud interface {
 
 	// CreateVolume will create a new Cinder Volume
 	CreateVolume(opt cinder.CreateOptsBuilder) (*cinder.Volume, error)
+
+	AttachVolume(serverID string, opt volumeattach.CreateOpts) (*volumeattach.VolumeAttachment, error)
 
 	//ListSecurityGroups will return the Neutron security groups which match the options
 	ListSecurityGroups(opt sg.ListOpts) ([]sg.SecGroup, error)
@@ -176,6 +182,24 @@ type OpenstackCloud interface {
 	CreateFloatingIP(opts floatingips.CreateOpts) (*floatingips.FloatingIP, error)
 
 	GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiIngressStatus, error)
+
+	// DefaultInstanceType determines a suitable instance type for the specified instance group
+	DefaultInstanceType(cluster *kops.Cluster, ig *kops.InstanceGroup) (string, error)
+
+	// Returns the availability zones for the service client passed (compute, volume, network)
+	ListAvailabilityZones(serviceClient *gophercloud.ServiceClient) ([]az.AvailabilityZone, error)
+
+	AssociateToPool(server *servers.Server, poolID string, opts v2pools.CreateMemberOpts) (*v2pools.Member, error)
+
+	CreatePool(opts v2pools.CreateOpts) (*v2pools.Pool, error)
+
+	ListPools(v2pools.ListOpts) ([]v2pools.Pool, error)
+
+	ListListeners(opts listeners.ListOpts) ([]listeners.Listener, error)
+
+	CreateListener(opts listeners.CreateOpts) (*listeners.Listener, error)
+
+	GetStorageAZFromCompute(azName string) (*az.AvailabilityZone, error)
 }
 
 type openstackCloud struct {
@@ -189,6 +213,27 @@ type openstackCloud struct {
 }
 
 var _ fi.Cloud = &openstackCloud{}
+
+type flavorList []flavors.Flavor
+
+func (s flavorList) Len() int {
+	return len(s)
+}
+
+func (s flavorList) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s flavorList) Less(i, j int) bool {
+	if s[i].VCPUs < s[j].VCPUs {
+		return true
+	} else {
+		if s[i].VCPUs > s[j].VCPUs {
+			return false
+		}
+	}
+	return s[i].RAM < s[j].RAM
+}
 
 func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (OpenstackCloud, error) {
 	config := vfs.OpenstackConfig{}
@@ -255,7 +300,7 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 
 	var dnsClient *gophercloud.ServiceClient
 	if !dns.IsGossipHostname(tags["KubernetesCluster"]) {
-
+		//TODO: This should be replaced with the environment variable methods as done above
 		endpointOpt, err := config.GetServiceConfig("Designate")
 		if err != nil {
 			return nil, err
@@ -285,45 +330,46 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 		region:        region,
 	}
 
-	var defaultLB kops.OpenstackLoadbalancerConfig = kops.OpenstackLoadbalancerConfig{
-		Method:     "ROUND_ROBIN",
-		Provider:   "haproxy",
-		UseOctavia: false,
-	}
-	var defaultMonitor kops.OpenstackMonitor = kops.OpenstackMonitor{
-		Delay:      "1m",
-		Timeout:    "30s",
-		MaxRetries: 3,
-	}
+	// var defaultLB kops.OpenstackLoadbalancerConfig = kops.OpenstackLoadbalancerConfig{
+	// 	Method:     "ROUND_ROBIN",
+	// 	Provider:   "haproxy",
+	// 	UseOctavia: false,
+	// }
+	// var defaultMonitor kops.OpenstackMonitor = kops.OpenstackMonitor{
+	// 	Delay:      "1m",
+	// 	Timeout:    "30s",
+	// 	MaxRetries: 3,
+	// }
 
-	if spec != nil {
-		if spec.CloudConfig == nil {
-			spec.CloudConfig = &kops.CloudConfiguration{}
-		}
-		if spec.CloudConfig.Openstack == nil {
-			spec.CloudConfig.Openstack = &kops.OpenstackConfiguration{
-				AuthURL:    authOption.IdentityEndpoint,
-				DomainName: authOption.DomainName,
-				DomainID:   authOption.DomainID,
-				Username:   authOption.Username,
-				Password:   authOption.Password,
-				Region:     region,
-				TenantName: authOption.TenantName,
-				TenantID:   authOption.TenantID,
-				Monitor:    &defaultMonitor,
-			}
-		}
-		if spec.CloudConfig.Openstack.Loadbalancer == nil {
-			spec.CloudConfig.Openstack.Loadbalancer = &defaultLB
-		}
-		if spec.CloudConfig.Openstack.Loadbalancer.FloatingNetwork == "" {
-			floatingNetwork, err := c.GetExternalNetwork()
-			if err != nil {
-				return nil, fmt.Errorf("error building openstack cloud: %v", err)
-			}
-			spec.CloudConfig.Openstack.Loadbalancer.FloatingNetwork = floatingNetwork.Name
-		}
-	}
+	// //FIXME: Should only be populated in create cluster
+	// if spec != nil {
+	// 	if spec.CloudConfig == nil {
+	// 		spec.CloudConfig = &kops.CloudConfiguration{}
+	// 	}
+	// 	if spec.CloudConfig.Openstack == nil {
+	// 		spec.CloudConfig.Openstack = &kops.OpenstackConfiguration{
+	// 			AuthURL:    authOption.IdentityEndpoint,
+	// 			DomainName: authOption.DomainName,
+	// 			DomainID:   authOption.DomainID,
+	// 			Username:   authOption.Username,
+	// 			Password:   authOption.Password,
+	// 			Region:     region,
+	// 			TenantName: authOption.TenantName,
+	// 			TenantID:   authOption.TenantID,
+	// 			Monitor:    &defaultMonitor,
+	// 		}
+	// 	}
+	// 	if spec.CloudConfig.Openstack.Loadbalancer == nil {
+	// 		spec.CloudConfig.Openstack.Loadbalancer = &defaultLB
+	// 	}
+	// 	if spec.CloudConfig.Openstack.Loadbalancer.FloatingNetwork == "" {
+	// 		floatingNetwork, err := c.GetExternalNetwork()
+	// 		if err != nil {
+	// 			return nil, fmt.Errorf("error building openstack cloud: %v", err)
+	// 		}
+	// 		spec.CloudConfig.Openstack.Loadbalancer.FloatingNetwork = floatingNetwork.Name
+	// 	}
+	// }
 
 	return c, nil
 }
@@ -499,6 +545,24 @@ func (c *openstackCloud) CreateVolume(opt cinder.CreateOptsBuilder) (*cinder.Vol
 	} else {
 		return volume, wait.ErrWaitTimeout
 	}
+}
+
+func (c *openstackCloud) AttachVolume(serverID string, opts volumeattach.CreateOpts) (attachment *volumeattach.VolumeAttachment, err error) {
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+		volumeAttachment, err := volumeattach.Create(c.ComputeClient(), serverID, opts).Extract()
+		if err != nil {
+			return false, fmt.Errorf("error attaching volume %s to server %s: %v", opts.VolumeID, serverID, err)
+		}
+		attachment = volumeAttachment
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return attachment, err
+	}
+	return attachment, err
 }
 
 func (c *openstackCloud) ListSecurityGroups(opt sg.ListOpts) ([]sg.SecGroup, error) {
@@ -986,49 +1050,207 @@ func (c *openstackCloud) GetLB(loadbalancerID string) (*loadbalancers.LoadBalanc
 }
 
 // ListLBs will list load balancers
-func (c *openstackCloud) ListLBs(opt loadbalancers.ListOptsBuilder) ([]loadbalancers.LoadBalancer, error) {
-	var lbs []loadbalancers.LoadBalancer
+func (c *openstackCloud) ListLBs(opt loadbalancers.ListOptsBuilder) (lbs []loadbalancers.LoadBalancer, err error) {
 
 	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
 		allPages, err := loadbalancers.List(c.lbClient, opt).AllPages()
 		if err != nil {
 			return false, fmt.Errorf("failed to list loadbalancers: %s", err)
 		}
-		r, err := loadbalancers.ExtractLoadBalancers(allPages)
+		lbs, err = loadbalancers.ExtractLoadBalancers(allPages)
 		if err != nil {
 			return false, fmt.Errorf("failed to extract loadbalancer pages: %s", err)
 		}
-		lbs = r
 		return true, nil
 	})
-	if err != nil {
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
 		return lbs, err
-	} else if done {
-		return lbs, nil
-	} else {
-		return lbs, wait.ErrWaitTimeout
 	}
+	return lbs, wait.ErrWaitTimeout
 }
 
-func (c *openstackCloud) CreateFloatingIP(opts floatingips.CreateOpts) (*floatingips.FloatingIP, error) {
-	fip, err := floatingips.Create(c.ComputeClient(), opts).Extract()
-	if err != nil {
-		return nil, fmt.Errorf("CreateFloatingIP: create floating IP failed: %v", err)
+func (c *openstackCloud) CreateFloatingIP(opts floatingips.CreateOpts) (fip *floatingips.FloatingIP, err error) {
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+
+		fip, err = floatingips.Create(c.ComputeClient(), opts).Extract()
+		if err != nil {
+			return false, fmt.Errorf("CreateFloatingIP: create floating IP failed: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return fip, err
 	}
-	return fip, nil
+	return fip, wait.ErrWaitTimeout
 }
 
-func (c *openstackCloud) ListFloatingIPs() ([]floatingips.FloatingIP, error) {
-	var fips []floatingips.FloatingIP
-	pages, err := floatingips.List(c.novaClient).AllPages()
-	if err != nil {
-		return fips, fmt.Errorf("Failed to list floating ip: %v", err)
+func (c *openstackCloud) ListFloatingIPs() (fips []floatingips.FloatingIP, err error) {
+
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+		pages, err := floatingips.List(c.novaClient).AllPages()
+		if err != nil {
+			return false, fmt.Errorf("Failed to list floating ip: %v", err)
+		}
+		fips, err = floatingips.ExtractFloatingIPs(pages)
+		if err != nil {
+			return false, fmt.Errorf("Failed to extract floating ip: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return fips, err
 	}
-	fips, err = floatingips.ExtractFloatingIPs(pages)
-	if err != nil {
-		return fips, fmt.Errorf("Failed to extract floating ip: %v", err)
+	return fips, wait.ErrWaitTimeout
+}
+
+func (c *openstackCloud) DefaultInstanceType(cluster *kops.Cluster, ig *kops.InstanceGroup) (string, error) {
+	type flavorInfo struct {
+		memory int
+		cpu    int
 	}
-	return fips, err
+	flavorPage, err := flavors.ListDetail(c.ComputeClient(), flavors.ListOpts{
+		MinRAM: 1024,
+	}).AllPages()
+	if err != nil {
+		return "", fmt.Errorf("Could not list flavors: %v", err)
+	}
+	var fList flavorList
+	fList, err = flavors.ExtractFlavors(flavorPage)
+	if err != nil {
+		return "", fmt.Errorf("Could not extract flavors: %v", err)
+	}
+	sort.Sort(&fList)
+
+	var candidates flavorList
+	switch ig.Spec.Role {
+	case kops.InstanceGroupRoleMaster:
+		// Requirements based on awsCloudImplementation.DefaultInstanceType
+		for _, flavor := range fList {
+			if flavor.RAM >= 4096 && flavor.VCPUs >= 1 {
+				candidates = append(candidates, flavor)
+			}
+		}
+
+	case kops.InstanceGroupRoleNode:
+		for _, flavor := range fList {
+			if flavor.RAM >= 4096 && flavor.VCPUs >= 2 {
+				candidates = append(candidates, flavor)
+			}
+		}
+
+	case kops.InstanceGroupRoleBastion:
+		for _, flavor := range fList {
+			if flavor.RAM >= 1024 {
+				candidates = append(candidates, flavor)
+			}
+		}
+
+	default:
+		return "", fmt.Errorf("unhandled role %q", ig.Spec.Role)
+	}
+	return candidates[0].Name, nil
+}
+
+func (c *openstackCloud) ListAvailabilityZones(serviceClient *gophercloud.ServiceClient) (azList []az.AvailabilityZone, err error) {
+
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		azPage, err := az.List(serviceClient).AllPages()
+		if err != nil {
+			return false, fmt.Errorf("Failed to list storage availability zones: %v", err)
+		}
+		azList, err = az.ExtractAvailabilityZones(azPage)
+		if err != nil {
+			return false, fmt.Errorf("Failed to extract storage availability zones: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return azList, err
+	}
+	return azList, err
+}
+
+func (c *openstackCloud) AssociateToPool(server *servers.Server, poolID string, opts v2pools.CreateMemberOpts) (*v2pools.Member, error) {
+
+	pool, err := v2pools.GetMember(c.NetworkingClient(), poolID, server.ID).Extract()
+	if err != nil || pool == nil {
+		association, err := v2pools.CreateMember(c.NetworkingClient(), poolID, opts).Extract()
+		if err != nil {
+			return nil, err
+		}
+		return association, nil
+	}
+	//Pool association already existed
+	return pool, nil
+}
+
+func (c *openstackCloud) CreatePool(opts v2pools.CreateOpts) (*v2pools.Pool, error) {
+	// TOOD: vfs backoff
+	return v2pools.Create(c.LoadBalancerClient(), opts).Extract()
+}
+
+func (c *openstackCloud) ListPools(opts v2pools.ListOpts) ([]v2pools.Pool, error) {
+	poolPage, err := v2pools.List(c.LoadBalancerClient(), opts).AllPages()
+	if err != nil {
+		return nil, err
+	}
+	poolList, err := v2pools.ExtractPools(poolPage)
+	if err != nil {
+		return nil, err
+	}
+	return poolList, nil
+}
+
+func (c *openstackCloud) ListListeners(opts listeners.ListOpts) ([]listeners.Listener, error) {
+	listenerPage, err := listeners.List(c.LoadBalancerClient(), opts).AllPages()
+	if err != nil {
+		return []listeners.Listener{}, err
+	}
+	listenerList, err := listeners.ExtractListeners(listenerPage)
+	if err != nil {
+		return listenerList, err
+	}
+	return listenerList, nil
+}
+
+func (c *openstackCloud) CreateListener(opts listeners.CreateOpts) (*listeners.Listener, error) {
+	listener, err := listeners.Create(c.LoadBalancerClient(), opts).Extract()
+	if err != nil {
+		return nil, err
+	}
+	return listener, nil
+}
+
+func (c *openstackCloud) GetStorageAZFromCompute(computeAZ string) (*az.AvailabilityZone, error) {
+	// TODO: This is less than desirable, but openstack differs here
+	// Check to see if the availability zone exists.
+	azList, err := c.ListAvailabilityZones(c.BlockStorageClient())
+	if err != nil {
+		return nil, fmt.Errorf("Volume.RenderOpenstack: %v", err)
+	}
+	for _, az := range azList {
+		if az.Name == computeAZ {
+			return &az, nil
+		}
+	}
+	// Determine if there is a meaningful storage AZ here
+	if len(azList) == 1 {
+		return &azList[0], nil
+	}
+	return nil, fmt.Errorf("No decernable storage availability zone could be mapped to compute availability zone %s", computeAZ)
 }
 
 func (c *openstackCloud) GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiIngressStatus, error) {

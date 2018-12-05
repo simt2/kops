@@ -517,8 +517,6 @@
     "openstack/networking/v2/extensions/external",
     "openstack/networking/v2/extensions/layer3/floatingips",
     "openstack/networking/v2/extensions/layer3/routers",
-    "openstack/networking/v2/extensions/lbaas_v2/monitors",
-    "openstack/networking/v2/extensions/lbaas_v2/pools",
     "openstack/networking/v2/extensions/security/groups",
     "openstack/networking/v2/extensions/security/rules",
     "openstack/networking/v2/networks",
@@ -1809,6 +1807,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "43aa5ac60584c0f6575faf45df662cf122f12a1a6a7c4383239621ab172400c6"
+  inputs-digest = "434f8c06e23cc5cf29ad2176a3035981cee96705586385e823d74b06cf8c3180"
   solver-name = "gps-cdcl"
   solver-version = 1

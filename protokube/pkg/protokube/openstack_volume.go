@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/gophercloud/gophercloud"
 	// TODO: This is abstracted and not really cinder, re-alias
 	cinderv2 "github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/volumeattach"
@@ -53,8 +52,7 @@ type InstanceMetadata struct {
 
 // GCEVolumes is the Volumes implementation for GCE
 type OpenstackVolumes struct {
-	cinderClient  *gophercloud.ServiceClient
-	computeClient *gophercloud.ServiceClient
+	cloud openstack.OpenstackCloud
 
 	meta *InstanceMetadata
 
@@ -62,6 +60,7 @@ type OpenstackVolumes struct {
 	project      string
 	instanceName string
 	internalIP   net.IP
+	storageZone  string
 }
 
 var _ Volumes = &OpenstackVolumes{}
@@ -107,9 +106,8 @@ func NewOpenstackVolumes() (*OpenstackVolumes, error) {
 	}
 
 	a := &OpenstackVolumes{
-		cinderClient:  oscloud.BlockStorageClient(),
-		computeClient: oscloud.ComputeClient(),
-		meta:          metadata,
+		cloud: oscloud,
+		meta:  metadata,
 	}
 
 	err = a.discoverTags()
@@ -155,22 +153,13 @@ func (a *OpenstackVolumes) discoverTags() error {
 		glog.Infof("Found project=%q", a.project)
 	}
 
-	// FIXME: Disks mounted to masters should be in the same Availability Zone
-	// // Zone
-	// {
-	// 	a.zone = strings.TrimSpace(metadata.AvailabilityZone)
-	// 	if a.zone == "" {
-	// 		return fmt.Errorf("zone metadata was empty")
-	// 	}
-	// 	glog.Infof("Found zone=%q", a.zone)
-
-	// 	region, err := regionFromZone(zone)
-	// 	if err != nil {
-	// 		return fmt.Errorf("error determining region from zone %q: %v", zone, err)
-	// 	}
-	// 	a.region = region
-	// 	glog.Infof("Found region=%q", a.region)
-	// }
+	// Storage Availability Zone
+	az, err := a.cloud.GetStorageAZFromCompute(a.meta.AvailabilityZone)
+	if err != nil {
+		return fmt.Errorf("Could not establish storage availability zone: %v", err)
+	}
+	a.storageZone = az.Name
+	glog.Infof("Found zone=%q", a.storageZone)
 
 	// Instance Name
 	{
@@ -236,17 +225,11 @@ func (v *OpenstackVolumes) FindVolumes() ([]*Volume, error) {
 
 	glog.V(2).Infof("Listing Openstack disks in %s/%s", v.project, v.meta.AvailabilityZone)
 
-	pages, err := cinderv2.List(v.cinderClient, cinderv2.ListOpts{
+	vols, err := v.cloud.ListVolumes(cinderv2.ListOpts{
 		TenantID: v.project,
-	}).AllPages()
+	})
 	if err != nil {
-		return volumes, fmt.Errorf("FindVolumes: Failed to list volume pages.")
-	}
-
-	var vols []cinderv2.Volume
-	err = cinderv2.ExtractVolumesInto(pages, &vols)
-	if err != nil {
-		return volumes, fmt.Errorf("FindVolumes: Could not extract volume structures from pages.")
+		return volumes, fmt.Errorf("FindVolumes: Failed to list volume.")
 	}
 
 	for _, volume := range vols {
@@ -284,7 +267,7 @@ func (v *OpenstackVolumes) AttachVolume(volume *Volume) error {
 	opts := volumeattach.CreateOpts{
 		VolumeID: volume.ID,
 	}
-	attachment, err := volumeattach.Create(v.computeClient, v.meta.ServerID, opts).Extract()
+	attachment, err := v.cloud.AttachVolume(v.meta.ServerID, opts)
 	if err != nil {
 		return fmt.Errorf("AttachVolume: failed to attach volume: %s", err)
 	}
@@ -293,7 +276,7 @@ func (v *OpenstackVolumes) AttachVolume(volume *Volume) error {
 }
 
 func (g *OpenstackVolumes) GossipSeeds() (gossip.SeedProvider, error) {
-	return gossipos.NewSeedProvider(g.computeClient, g.clusterName, g.project)
+	return gossipos.NewSeedProvider(g.cloud.ComputeClient(), g.clusterName, g.project)
 }
 
 func (g *OpenstackVolumes) InstanceName() string {

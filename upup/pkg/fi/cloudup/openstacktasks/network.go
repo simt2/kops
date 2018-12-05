@@ -48,8 +48,13 @@ func NewNetworkTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifec
 }
 
 func (n *Network) Find(context *fi.Context) (*Network, error) {
+	if n.Name == nil && n.ID == nil {
+		return nil, nil
+	}
+
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 	opt := networks.ListOpts{
+		ID:   fi.StringValue(n.ID),
 		Name: fi.StringValue(n.Name),
 	}
 	ns, err := cloud.ListNetworks(opt)
@@ -80,8 +85,6 @@ func (_ *Network) CheckChanges(a, e, changes *Network) error {
 			return fi.RequiredField("Name")
 		}
 	} else {
-		println(fmt.Sprintf("a.ID: %s \t e.ID: %s", *a.ID, *e.ID))
-		println(fmt.Sprintf("a.Name: %s \t e.Name: %s", *a.Name, *e.Name))
 		if changes.ID != nil {
 			return fi.CannotChangeField("ID")
 		}
