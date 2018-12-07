@@ -106,7 +106,9 @@ func (_ *PoolAssociation) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e,
 				SubnetID:     fi.StringValue(e.Pool.Loadbalancer.VipSubnet),
 				Address:      poolAddress,
 			})
-			//TODO: This becomes difficult as there are actually multiple ID's associated to this one task
+			if err != nil {
+				return fmt.Errorf("Failed to create pool: %v", err)
+			}
 			e.ID = fi.String(pool.ID)
 		}
 

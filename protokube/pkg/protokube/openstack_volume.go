@@ -158,7 +158,7 @@ func (a *OpenstackVolumes) discoverTags() error {
 	if err != nil {
 		return fmt.Errorf("Could not establish storage availability zone: %v", err)
 	}
-	a.storageZone = az.Name
+	a.storageZone = az.ZoneName
 	glog.Infof("Found zone=%q", a.storageZone)
 
 	// Instance Name

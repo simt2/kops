@@ -497,6 +497,7 @@
     ".",
     "openstack",
     "openstack/blockstorage/v2/volumes",
+    "openstack/compute/v2/extensions/availabilityzones",
     "openstack/compute/v2/extensions/floatingips",
     "openstack/compute/v2/extensions/keypairs",
     "openstack/compute/v2/extensions/schedulerhints",
@@ -525,7 +526,6 @@
     "openstack/objectstorage/v1/accounts",
     "openstack/objectstorage/v1/containers",
     "openstack/objectstorage/v1/objects",
-    "openstack/sharedfilesystems/v2/availabilityzones",
     "openstack/utils",
     "pagination"
   ]
@@ -1807,6 +1807,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "434f8c06e23cc5cf29ad2176a3035981cee96705586385e823d74b06cf8c3180"
+  inputs-digest = "4af73201063e66126e919d6585f76049e7939d47097d0af094d4133bdc1e4e39"
   solver-name = "gps-cdcl"
   solver-version = 1

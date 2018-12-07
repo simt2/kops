@@ -124,7 +124,7 @@ func (_ *Volume) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes 
 
 		opt := cinderv2.CreateOpts{
 			Size:             int(*e.SizeGB),
-			AvailabilityZone: storageAZ.Name,
+			AvailabilityZone: storageAZ.ZoneName,
 			Metadata:         e.Tags,
 			Name:             fi.StringValue(e.Name),
 			VolumeType:       fi.StringValue(e.VolumeType),

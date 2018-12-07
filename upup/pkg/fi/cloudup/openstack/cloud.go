@@ -28,6 +28,7 @@ import (
 	"github.com/gophercloud/gophercloud"
 	os "github.com/gophercloud/gophercloud/openstack"
 	cinder "github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
+	az "github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
@@ -46,7 +47,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
-	az "github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/availabilityzones"
 	"github.com/gophercloud/gophercloud/pagination"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -1092,7 +1092,7 @@ func (c *openstackCloud) CreateFloatingIP(opts floatingips.CreateOpts) (fip *flo
 
 func (c *openstackCloud) ListFloatingIPs() (fips []floatingips.FloatingIP, err error) {
 
-	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
 		pages, err := floatingips.List(c.novaClient).AllPages()
 		if err != nil {
 			return false, fmt.Errorf("Failed to list floating ip: %v", err)
@@ -1157,6 +1157,9 @@ func (c *openstackCloud) DefaultInstanceType(cluster *kops.Cluster, ig *kops.Ins
 	default:
 		return "", fmt.Errorf("unhandled role %q", ig.Spec.Role)
 	}
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("No suitable flavor for role %q", ig.Spec.Role)
+	}
 	return candidates[0].Name, nil
 }
 
@@ -1164,6 +1167,7 @@ func (c *openstackCloud) ListAvailabilityZones(serviceClient *gophercloud.Servic
 
 	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
 		azPage, err := az.List(serviceClient).AllPages()
+
 		if err != nil {
 			return false, fmt.Errorf("Failed to list storage availability zones: %v", err)
 		}
@@ -1183,53 +1187,102 @@ func (c *openstackCloud) ListAvailabilityZones(serviceClient *gophercloud.Servic
 	return azList, err
 }
 
-func (c *openstackCloud) AssociateToPool(server *servers.Server, poolID string, opts v2pools.CreateMemberOpts) (*v2pools.Member, error) {
+func (c *openstackCloud) AssociateToPool(server *servers.Server, poolID string, opts v2pools.CreateMemberOpts) (association *v2pools.Member, err error) {
 
-	pool, err := v2pools.GetMember(c.NetworkingClient(), poolID, server.ID).Extract()
-	if err != nil || pool == nil {
-		association, err := v2pools.CreateMember(c.NetworkingClient(), poolID, opts).Extract()
-		if err != nil {
-			return nil, err
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+		association, err = v2pools.GetMember(c.NetworkingClient(), poolID, server.ID).Extract()
+		if err != nil || association == nil {
+			// Pool association does not exist.  Create it
+			association, err = v2pools.CreateMember(c.NetworkingClient(), poolID, opts).Extract()
+			if err != nil {
+				return false, fmt.Errorf("Failed to create pool association: %v", err)
+			}
+			return true, nil
 		}
-		return association, nil
+		//NOOP
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return association, err
 	}
-	//Pool association already existed
+	return association, nil
+}
+
+func (c *openstackCloud) CreatePool(opts v2pools.CreateOpts) (pool *v2pools.Pool, err error) {
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+		pool, err = v2pools.Create(c.LoadBalancerClient(), opts).Extract()
+		if err != nil {
+			return false, fmt.Errorf("Failed to create pool: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return pool, err
+	}
 	return pool, nil
 }
 
-func (c *openstackCloud) CreatePool(opts v2pools.CreateOpts) (*v2pools.Pool, error) {
-	// TOOD: vfs backoff
-	return v2pools.Create(c.LoadBalancerClient(), opts).Extract()
-}
-
-func (c *openstackCloud) ListPools(opts v2pools.ListOpts) ([]v2pools.Pool, error) {
-	poolPage, err := v2pools.List(c.LoadBalancerClient(), opts).AllPages()
-	if err != nil {
-		return nil, err
-	}
-	poolList, err := v2pools.ExtractPools(poolPage)
-	if err != nil {
-		return nil, err
+func (c *openstackCloud) ListPools(opts v2pools.ListOpts) (poolList []v2pools.Pool, err error) {
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		poolPage, err := v2pools.List(c.LoadBalancerClient(), opts).AllPages()
+		if err != nil {
+			return false, fmt.Errorf("Failed to list pools: %v", err)
+		}
+		poolList, err = v2pools.ExtractPools(poolPage)
+		if err != nil {
+			return false, fmt.Errorf("Failed to extract pools: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return poolList, err
 	}
 	return poolList, nil
 }
 
-func (c *openstackCloud) ListListeners(opts listeners.ListOpts) ([]listeners.Listener, error) {
-	listenerPage, err := listeners.List(c.LoadBalancerClient(), opts).AllPages()
-	if err != nil {
-		return []listeners.Listener{}, err
-	}
-	listenerList, err := listeners.ExtractListeners(listenerPage)
-	if err != nil {
+func (c *openstackCloud) ListListeners(opts listeners.ListOpts) (listenerList []listeners.Listener, err error) {
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		listenerPage, err := listeners.List(c.LoadBalancerClient(), opts).AllPages()
+		if err != nil {
+			return false, fmt.Errorf("Failed to list listeners: %v", err)
+		}
+		listenerList, err = listeners.ExtractListeners(listenerPage)
+		if err != nil {
+			return false, fmt.Errorf("Failed to extract listeners: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
 		return listenerList, err
 	}
 	return listenerList, nil
 }
 
-func (c *openstackCloud) CreateListener(opts listeners.CreateOpts) (*listeners.Listener, error) {
-	listener, err := listeners.Create(c.LoadBalancerClient(), opts).Extract()
-	if err != nil {
-		return nil, err
+func (c *openstackCloud) CreateListener(opts listeners.CreateOpts) (listener *listeners.Listener, err error) {
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		listener, err = listeners.Create(c.LoadBalancerClient(), opts).Extract()
+		if err != nil {
+			return false, fmt.Errorf("Unabled to create listener: %v", err)
+		}
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return listener, err
 	}
 	return listener, nil
 }
@@ -1242,7 +1295,7 @@ func (c *openstackCloud) GetStorageAZFromCompute(computeAZ string) (*az.Availabi
 		return nil, fmt.Errorf("Volume.RenderOpenstack: %v", err)
 	}
 	for _, az := range azList {
-		if az.Name == computeAZ {
+		if az.ZoneName == computeAZ {
 			return &az, nil
 		}
 	}
@@ -1256,30 +1309,46 @@ func (c *openstackCloud) GetStorageAZFromCompute(computeAZ string) (*az.Availabi
 func (c *openstackCloud) GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiIngressStatus, error) {
 	var ingresses []kops.ApiIngressStatus
 
-	if cluster.Spec.MasterPublicName != "" {
-		// Note that this must match OpenstackModel lb name
-		glog.V(2).Infof("Querying Openstack to find Loadbalancers for API (%q)", cluster.Name)
-		lbList, err := c.ListLBs(loadbalancers.ListOpts{
-			Name: cluster.Spec.MasterPublicName,
-		})
-		if err != nil {
-			return ingresses, fmt.Errorf("GetApiIngressStatus: Failed to list openstack loadbalancers: %v", err)
-		}
-		for _, lb := range lbList {
-			// Must Find Floating IP related to this lb
-			fips, err := c.ListFloatingIPs()
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		success := false
+		if cluster.Spec.MasterPublicName != "" {
+			// Note that this must match OpenstackModel lb name
+			glog.V(2).Infof("Querying Openstack to find Loadbalancers for API (%q)", cluster.Name)
+			lbList, err := c.ListLBs(loadbalancers.ListOpts{
+				Name: cluster.Spec.MasterPublicName,
+			})
 			if err != nil {
-				return ingresses, err
+				return success, fmt.Errorf("GetApiIngressStatus: Failed to list openstack loadbalancers: %v", err)
 			}
-			for _, fip := range fips {
-				if fip.FixedIP == lb.VipAddress {
+			for _, lb := range lbList {
+				// Must Find Floating IP related to this lb
+				fips, err := c.ListFloatingIPs()
+				if err != nil {
+					return success, err
+				}
+				for _, fip := range fips {
+					if fip.FixedIP == lb.VipAddress {
 
-					ingresses = append(ingresses, kops.ApiIngressStatus{
-						IP: fip.IP,
-					})
+						ingresses = append(ingresses, kops.ApiIngressStatus{
+							IP: fip.IP,
+						})
+						success = true
+					}
+				}
+				if success {
+					return success, nil
 				}
 			}
+			return false, fmt.Errorf("Unable to find loadbalancer for cluster")
 		}
+		//NOOP
+		return true, nil
+	})
+	if !done {
+		if err == nil {
+			err = wait.ErrWaitTimeout
+		}
+		return ingresses, err
 	}
 
 	return ingresses, nil

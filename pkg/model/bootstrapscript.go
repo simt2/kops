@@ -92,14 +92,14 @@ func (b *BootstrapScript) buildEnvironmentVariables(cluster *kops.Cluster) (map[
 	}
 
 	if kops.CloudProviderID(cluster.Spec.CloudProvider) == kops.CloudProviderOpenstack {
-		env["OS_TENANT_ID"] = cluster.Spec.CloudConfig.Openstack.TenantID
-		env["OS_TENANT_NAME"] = cluster.Spec.CloudConfig.Openstack.TenantName
-		env["OS_PROJECT_DOMAIN_NAME"] = cluster.Spec.CloudConfig.Openstack.DomainName
-		env["OS_PROJECT_DOMAIN_ID"] = cluster.Spec.CloudConfig.Openstack.DomainID
-		env["OS_USERNAME"] = cluster.Spec.CloudConfig.Openstack.Username
-		env["OS_PASSWORD"] = cluster.Spec.CloudConfig.Openstack.Password
-		env["OS_AUTH_URL"] = cluster.Spec.CloudConfig.Openstack.AuthURL
-		env["OS_REGION_NAME"] = cluster.Spec.CloudConfig.Openstack.Region
+		env["OS_TENANT_ID"] = os.Getenv("OS_TENANT_ID")
+		env["OS_TENANT_NAME"] = os.Getenv("OS_TENANT_NAME")
+		env["OS_PROJECT_DOMAIN_NAME"] = os.Getenv("OS_PROJECT_DOMAIN_NAME")
+		env["OS_PROJECT_DOMAIN_ID"] = os.Getenv("OS_PROJECT_DOMAIN_ID")
+		env["OS_USERNAME"] = os.Getenv("OS_USERNAME")
+		env["OS_PASSWORD"] = os.Getenv("OS_PASSWORD")
+		env["OS_AUTH_URL"] = os.Getenv("OS_AUTH_URL")
+		env["OS_REGION_NAME"] = os.Getenv("OS_REGION_NAME")
 	}
 
 	return env, nil

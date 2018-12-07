@@ -66,7 +66,6 @@ type CreateClusterOptions struct {
 	Cloud                string
 	Zones                []string
 	MasterZones          []string
-	BastionSize          string
 	NodeSize             string
 	MasterSize           string
 	MasterCount          int32
@@ -326,7 +325,6 @@ func NewCmdCreateCluster(f *util.Factory, out io.Writer) *cobra.Command {
 
 	// Bastion
 	cmd.Flags().BoolVar(&options.Bastion, "bastion", options.Bastion, "Pass the --bastion flag to enable a bastion instance group. Only applies to private topology.")
-	cmd.Flags().StringVar(&options.BastionSize, "bastion-size", options.NodeSize, "Set instance size for the bastion")
 
 	// Allow custom tags from the CLI
 	cmd.Flags().StringVar(&options.CloudLabels, "cloud-labels", options.CloudLabels, "A list of KV pairs used to tag all instance groups in AWS (eg \"Owner=John Doe,Team=Some Team\").")
@@ -865,6 +863,26 @@ func RunCreateCluster(f *util.Factory, out io.Writer, c *CreateClusterOptions) e
 		}
 	}
 
+	if api.CloudProviderID(cluster.Spec.CloudProvider) == api.CloudProviderOpenstack {
+
+		if cluster.Spec.CloudConfig == nil {
+			cluster.Spec.CloudConfig = &api.CloudConfiguration{
+				Openstack: &api.OpenstackConfiguration{},
+			}
+		}
+		// Set some default cloud config options for kubelet
+		cluster.Spec.CloudConfig.Openstack.Loadbalancer = &api.OpenstackLoadbalancerConfig{
+			Method:     "ROUND_ROBIN",
+			Provider:   "haproxy",
+			UseOctavia: false,
+		}
+		cluster.Spec.CloudConfig.Openstack.Monitor = &api.OpenstackMonitor{
+			Delay:      "1m",
+			Timeout:    "30s",
+			MaxRetries: 3,
+		}
+	}
+
 	if c.KubernetesVersion != "" {
 		cluster.Spec.KubernetesVersion = c.KubernetesVersion
 	}
@@ -988,7 +1006,6 @@ func RunCreateCluster(f *util.Factory, out io.Writer, c *CreateClusterOptions) e
 			bastionGroup.Spec.Role = api.InstanceGroupRoleBastion
 			bastionGroup.ObjectMeta.Name = "bastions"
 			bastionGroup.Spec.Image = c.Image
-			bastionGroup.Spec.MachineType = c.BastionSize
 			instanceGroups = append(instanceGroups, bastionGroup)
 
 			cluster.Spec.Topology.Bastion = &api.BastionSpec{

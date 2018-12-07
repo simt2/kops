@@ -111,16 +111,17 @@ func (b *CloudConfigBuilder) Build(c *fi.ModelBuilderContext) error {
 		}
 
 		lines = append(lines,
-			fmt.Sprintf("auth-url=\"%s\"", osc.AuthURL),
-			fmt.Sprintf("username=\"%s\"", osc.Username),
-			fmt.Sprintf("password=\"%s\"", osc.Password),
-			fmt.Sprintf("region=\"%s\"", osc.Region),
-			fmt.Sprintf("tenant-id=\"%s\"", osc.TenantID),
-			fmt.Sprintf("tenant-name=\"%s\"", osc.TenantName),
-			fmt.Sprintf("domain-name=\"%s\"", osc.DomainName),
-			fmt.Sprintf("domain-id=\"%s\"", osc.DomainID),
+			fmt.Sprintf("auth-url=\"%s\"", os.Getenv("OS_AUTH_URL")),
+			fmt.Sprintf("username=\"%s\"", os.Getenv("OS_USERNAME")),
+			fmt.Sprintf("password=\"%s\"", os.Getenv("OS_PASSWORD")),
+			fmt.Sprintf("region=\"%s\"", os.Getenv("OS_REGION_NAME")),
+			fmt.Sprintf("tenant-id=\"%s\"", os.Getenv("OS_TENANT_ID")),
+			fmt.Sprintf("tenant-name=\"%s\"", os.Getenv("OS_TENANT_NAME")),
+			fmt.Sprintf("domain-name=\"%s\"", os.Getenv("OS_PROJECT_DOMAIN_NAME")),
+			fmt.Sprintf("domain-id=\"%s\"", os.Getenv("OS_PROJECT_DOMAIN_ID")),
 			"",
 		)
+
 		if lb := osc.Loadbalancer; lb != nil {
 			lines = append(lines,
 				"[LoadBalancer]",
