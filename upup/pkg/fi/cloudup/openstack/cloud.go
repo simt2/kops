@@ -1069,7 +1069,7 @@ func (c *openstackCloud) ListLBs(opt loadbalancers.ListOptsBuilder) (lbs []loadb
 		}
 		return lbs, err
 	}
-	return lbs, wait.ErrWaitTimeout
+	return lbs, nil
 }
 
 func (c *openstackCloud) CreateFloatingIP(opts floatingips.CreateOpts) (fip *floatingips.FloatingIP, err error) {
@@ -1087,7 +1087,7 @@ func (c *openstackCloud) CreateFloatingIP(opts floatingips.CreateOpts) (fip *flo
 		}
 		return fip, err
 	}
-	return fip, wait.ErrWaitTimeout
+	return fip, nil
 }
 
 func (c *openstackCloud) ListFloatingIPs() (fips []floatingips.FloatingIP, err error) {
@@ -1109,7 +1109,7 @@ func (c *openstackCloud) ListFloatingIPs() (fips []floatingips.FloatingIP, err e
 		}
 		return fips, err
 	}
-	return fips, wait.ErrWaitTimeout
+	return fips, nil
 }
 
 func (c *openstackCloud) DefaultInstanceType(cluster *kops.Cluster, ig *kops.InstanceGroup) (string, error) {
@@ -1184,7 +1184,7 @@ func (c *openstackCloud) ListAvailabilityZones(serviceClient *gophercloud.Servic
 		}
 		return azList, err
 	}
-	return azList, err
+	return azList, nil
 }
 
 func (c *openstackCloud) AssociateToPool(server *servers.Server, poolID string, opts v2pools.CreateMemberOpts) (association *v2pools.Member, err error) {
@@ -1308,47 +1308,31 @@ func (c *openstackCloud) GetStorageAZFromCompute(computeAZ string) (*az.Availabi
 
 func (c *openstackCloud) GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiIngressStatus, error) {
 	var ingresses []kops.ApiIngressStatus
+	if cluster.Spec.MasterPublicName != "" {
+		// Note that this must match OpenstackModel lb name
+		glog.V(2).Infof("Querying Openstack to find Loadbalancers for API (%q)", cluster.Name)
+		lbList, err := c.ListLBs(loadbalancers.ListOpts{
+			Name: cluster.Spec.MasterPublicName,
+		})
+		if err != nil {
+			return ingresses, fmt.Errorf("GetApiIngressStatus: Failed to list openstack loadbalancers: %v", err)
+		}
+		// Must Find Floating IP related to this lb
+		fips, err := c.ListFloatingIPs()
+		if err != nil {
+			return ingresses, fmt.Errorf("GetApiIngressStatus: Failed to list floating IP's: %v", err)
+		}
 
-	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
-		success := false
-		if cluster.Spec.MasterPublicName != "" {
-			// Note that this must match OpenstackModel lb name
-			glog.V(2).Infof("Querying Openstack to find Loadbalancers for API (%q)", cluster.Name)
-			lbList, err := c.ListLBs(loadbalancers.ListOpts{
-				Name: cluster.Spec.MasterPublicName,
-			})
-			if err != nil {
-				return success, fmt.Errorf("GetApiIngressStatus: Failed to list openstack loadbalancers: %v", err)
-			}
-			for _, lb := range lbList {
-				// Must Find Floating IP related to this lb
-				fips, err := c.ListFloatingIPs()
-				if err != nil {
-					return success, err
-				}
-				for _, fip := range fips {
-					if fip.FixedIP == lb.VipAddress {
+		for _, lb := range lbList {
+			for _, fip := range fips {
+				if fip.FixedIP == lb.VipAddress {
 
-						ingresses = append(ingresses, kops.ApiIngressStatus{
-							IP: fip.IP,
-						})
-						success = true
-					}
-				}
-				if success {
-					return success, nil
+					ingresses = append(ingresses, kops.ApiIngressStatus{
+						IP: fip.IP,
+					})
 				}
 			}
-			return false, fmt.Errorf("Unable to find loadbalancer for cluster")
 		}
-		//NOOP
-		return true, nil
-	})
-	if !done {
-		if err == nil {
-			err = wait.ErrWaitTimeout
-		}
-		return ingresses, err
 	}
 
 	return ingresses, nil
