@@ -330,6 +330,7 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 		region:        region,
 	}
 
+	//TODO: Config setup would be better performed in create_cluster and moved to swift
 	if spec.CloudConfig == nil {
 		spec.CloudConfig = &kops.CloudConfiguration{}
 	}
@@ -337,10 +338,15 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 
 	if spec.API.LoadBalancer != nil {
 
+		network, err := c.GetExternalNetwork()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get external network for openstack: %v", err)
+		}
 		spec.CloudConfig.Openstack.Loadbalancer = &kops.OpenstackLoadbalancerConfig{
-			Method:     fi.String("ROUND_ROBIN"),
-			Provider:   fi.String("haproxy"),
-			UseOctavia: fi.Bool(false),
+			FloatingNetwork: fi.String(network.Name),
+			Method:          fi.String("ROUND_ROBIN"),
+			Provider:        fi.String("haproxy"),
+			UseOctavia:      fi.Bool(false),
 		}
 	}
 	spec.CloudConfig.Openstack.Monitor = &kops.OpenstackMonitor{
