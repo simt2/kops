@@ -125,19 +125,19 @@ func (b *CloudConfigBuilder) Build(c *fi.ModelBuilderContext) error {
 		if lb := osc.Loadbalancer; lb != nil {
 			lines = append(lines,
 				"[LoadBalancer]",
-				fmt.Sprintf("floating-network-id=%s", lb.FloatingNetwork),
-				fmt.Sprintf("lb-method=%s", lb.Method),
-				fmt.Sprintf("lb-provider=%s", lb.Provider),
-				fmt.Sprintf("use-octavia=%t", lb.UseOctavia),
+				fmt.Sprintf("floating-network-id=%s", fi.StringValue(lb.FloatingNetwork)),
+				fmt.Sprintf("lb-method=%s", fi.StringValue(lb.Method)),
+				fmt.Sprintf("lb-provider=%s", fi.StringValue(lb.Provider)),
+				fmt.Sprintf("use-octavia=%t", fi.BoolValue(lb.UseOctavia)),
 				"",
 			)
 		}
 		if monitor := osc.Monitor; monitor != nil {
 			lines = append(lines,
 				"create-monitor=yes",
-				fmt.Sprintf("monitor-delay=%s", monitor.Delay),
-				fmt.Sprintf("monitor-timeout=%s", monitor.Timeout),
-				fmt.Sprintf("monitor-max-retries=%d", monitor.MaxRetries),
+				fmt.Sprintf("monitor-delay=%s", fi.StringValue(monitor.Delay)),
+				fmt.Sprintf("monitor-timeout=%s", fi.StringValue(monitor.Timeout)),
+				fmt.Sprintf("monitor-max-retries=%d", fi.IntValue(monitor.MaxRetries)),
 				"",
 			)
 		}

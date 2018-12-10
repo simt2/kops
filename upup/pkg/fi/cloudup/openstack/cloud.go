@@ -330,46 +330,24 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 		region:        region,
 	}
 
-	// var defaultLB kops.OpenstackLoadbalancerConfig = kops.OpenstackLoadbalancerConfig{
-	// 	Method:     "ROUND_ROBIN",
-	// 	Provider:   "haproxy",
-	// 	UseOctavia: false,
-	// }
-	// var defaultMonitor kops.OpenstackMonitor = kops.OpenstackMonitor{
-	// 	Delay:      "1m",
-	// 	Timeout:    "30s",
-	// 	MaxRetries: 3,
-	// }
+	if spec.CloudConfig == nil {
+		spec.CloudConfig = &kops.CloudConfiguration{}
+	}
+	spec.CloudConfig.Openstack = &kops.OpenstackConfiguration{}
 
-	// //FIXME: Should only be populated in create cluster
-	// if spec != nil {
-	// 	if spec.CloudConfig == nil {
-	// 		spec.CloudConfig = &kops.CloudConfiguration{}
-	// 	}
-	// 	if spec.CloudConfig.Openstack == nil {
-	// 		spec.CloudConfig.Openstack = &kops.OpenstackConfiguration{
-	// 			AuthURL:    authOption.IdentityEndpoint,
-	// 			DomainName: authOption.DomainName,
-	// 			DomainID:   authOption.DomainID,
-	// 			Username:   authOption.Username,
-	// 			Password:   authOption.Password,
-	// 			Region:     region,
-	// 			TenantName: authOption.TenantName,
-	// 			TenantID:   authOption.TenantID,
-	// 			Monitor:    &defaultMonitor,
-	// 		}
-	// 	}
-	// 	if spec.CloudConfig.Openstack.Loadbalancer == nil {
-	// 		spec.CloudConfig.Openstack.Loadbalancer = &defaultLB
-	// 	}
-	// 	if spec.CloudConfig.Openstack.Loadbalancer.FloatingNetwork == "" {
-	// 		floatingNetwork, err := c.GetExternalNetwork()
-	// 		if err != nil {
-	// 			return nil, fmt.Errorf("error building openstack cloud: %v", err)
-	// 		}
-	// 		spec.CloudConfig.Openstack.Loadbalancer.FloatingNetwork = floatingNetwork.Name
-	// 	}
-	// }
+	if spec.API.LoadBalancer != nil {
+
+		spec.CloudConfig.Openstack.Loadbalancer = &kops.OpenstackLoadbalancerConfig{
+			Method:     fi.String("ROUND_ROBIN"),
+			Provider:   fi.String("haproxy"),
+			UseOctavia: fi.Bool(false),
+		}
+	}
+	spec.CloudConfig.Openstack.Monitor = &kops.OpenstackMonitor{
+		Delay:      fi.String("1m"),
+		Timeout:    fi.String("30s"),
+		MaxRetries: fi.Int(3),
+	}
 
 	return c, nil
 }

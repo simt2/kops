@@ -470,17 +470,17 @@ type LeaderElectionConfiguration struct {
 }
 
 type OpenstackLoadbalancerConfig struct {
-	Method          string `json:"method,omitempty"`
-	Provider        string `json:"provider,omitempty"`
-	UseOctavia      bool   `json:"useOctavia,omitempty"`
-	FloatingNetwork string `json:"floatingNetwork,omitempty"`
-	SubnetID        string `json:"subnetID,omitempty"`
+	Method          *string `json:"method,omitempty"`
+	Provider        *string `json:"provider,omitempty"`
+	UseOctavia      *bool   `json:"useOctavia,omitempty"`
+	FloatingNetwork *string `json:"floatingNetwork,omitempty"`
+	SubnetID        *string `json:"subnetID,omitempty"`
 }
 
 type OpenstackMonitor struct {
-	Delay      string `json:"delay,omitempty"`
-	Timeout    string `json:"timeout,omitempty"`
-	MaxRetries int    `json:"maxRetries,omitempty"`
+	Delay      *string `json:"delay,omitempty"`
+	Timeout    *string `json:"timeout,omitempty"`
+	MaxRetries *int    `json:"maxRetries,omitempty"`
 }
 
 type OpenstackConfiguration struct {
@@ -506,7 +506,7 @@ type CloudConfiguration struct {
 	VSphereDatastore     *string `json:"vSphereDatastore,omitempty"`
 	VSphereCoreDNSServer *string `json:"vSphereCoreDNSServer,omitempty"`
 	// Openstack cloud-config options
-	Openstack *OpenstackConfiguration `json:"Openstack,omitempty`
+	Openstack *OpenstackConfiguration `json:"openstack,omitempty"`
 }
 
 // HasAdmissionController checks if a specific admission controller is enabled
