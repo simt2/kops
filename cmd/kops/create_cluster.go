@@ -863,26 +863,6 @@ func RunCreateCluster(f *util.Factory, out io.Writer, c *CreateClusterOptions) e
 		}
 	}
 
-	if api.CloudProviderID(cluster.Spec.CloudProvider) == api.CloudProviderOpenstack {
-
-		if cluster.Spec.CloudConfig == nil {
-			cluster.Spec.CloudConfig = &api.CloudConfiguration{
-				Openstack: &api.OpenstackConfiguration{},
-			}
-		}
-		// Set some default cloud config options for kubelet
-		cluster.Spec.CloudConfig.Openstack.Loadbalancer = &api.OpenstackLoadbalancerConfig{
-			Method:     "ROUND_ROBIN",
-			Provider:   "haproxy",
-			UseOctavia: false,
-		}
-		cluster.Spec.CloudConfig.Openstack.Monitor = &api.OpenstackMonitor{
-			Delay:      "1m",
-			Timeout:    "30s",
-			MaxRetries: 3,
-		}
-	}
-
 	if c.KubernetesVersion != "" {
 		cluster.Spec.KubernetesVersion = c.KubernetesVersion
 	}
@@ -1078,6 +1058,28 @@ func RunCreateCluster(f *util.Factory, out io.Writer, c *CreateClusterOptions) e
 			cluster.Spec.API.LoadBalancer.Type = api.LoadBalancerTypeInternal
 		default:
 			return fmt.Errorf("unknown api-loadbalancer-type: %q", c.APILoadBalancerType)
+		}
+	}
+
+	if api.CloudProviderID(cluster.Spec.CloudProvider) == api.CloudProviderOpenstack {
+
+		if cluster.Spec.CloudConfig == nil {
+			cluster.Spec.CloudConfig = &api.CloudConfiguration{}
+		}
+		cluster.Spec.CloudConfig.Openstack = &api.OpenstackConfiguration{}
+
+		if cluster.Spec.API.LoadBalancer != nil {
+
+			cluster.Spec.CloudConfig.Openstack.Loadbalancer = &api.OpenstackLoadbalancerConfig{
+				Method:     fi.String("ROUND_ROBIN"),
+				Provider:   fi.String("haproxy"),
+				UseOctavia: fi.Bool(false),
+			}
+		}
+		cluster.Spec.CloudConfig.Openstack.Monitor = &api.OpenstackMonitor{
+			Delay:      fi.String("1m"),
+			Timeout:    fi.String("30s"),
+			MaxRetries: fi.Int(3),
 		}
 	}
 
