@@ -331,28 +331,31 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 	}
 
 	//TODO: Config setup would be better performed in create_cluster and moved to swift
-	if spec.CloudConfig == nil {
-		spec.CloudConfig = &kops.CloudConfiguration{}
-	}
-	spec.CloudConfig.Openstack = &kops.OpenstackConfiguration{}
-
-	if spec.API.LoadBalancer != nil {
-
-		network, err := c.GetExternalNetwork()
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get external network for openstack: %v", err)
+	//    This will cause a new api version to need to be created
+	if spec != nil {
+		if spec.CloudConfig == nil {
+			spec.CloudConfig = &kops.CloudConfiguration{}
 		}
-		spec.CloudConfig.Openstack.Loadbalancer = &kops.OpenstackLoadbalancerConfig{
-			FloatingNetwork: fi.String(network.Name),
-			Method:          fi.String("ROUND_ROBIN"),
-			Provider:        fi.String("haproxy"),
-			UseOctavia:      fi.Bool(false),
+		spec.CloudConfig.Openstack = &kops.OpenstackConfiguration{}
+
+		if spec.API.LoadBalancer != nil {
+
+			network, err := c.GetExternalNetwork()
+			if err != nil {
+				return nil, fmt.Errorf("Failed to get external network for openstack: %v", err)
+			}
+			spec.CloudConfig.Openstack.Loadbalancer = &kops.OpenstackLoadbalancerConfig{
+				FloatingNetwork: fi.String(network.Name),
+				Method:          fi.String("ROUND_ROBIN"),
+				Provider:        fi.String("haproxy"),
+				UseOctavia:      fi.Bool(false),
+			}
 		}
-	}
-	spec.CloudConfig.Openstack.Monitor = &kops.OpenstackMonitor{
-		Delay:      fi.String("1m"),
-		Timeout:    fi.String("30s"),
-		MaxRetries: fi.Int(3),
+		spec.CloudConfig.Openstack.Monitor = &kops.OpenstackMonitor{
+			Delay:      fi.String("1m"),
+			Timeout:    fi.String("30s"),
+			MaxRetries: fi.Int(3),
+		}
 	}
 
 	return c, nil
