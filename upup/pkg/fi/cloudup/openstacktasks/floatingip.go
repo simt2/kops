@@ -49,7 +49,7 @@ func (e *FloatingIP) FindIPAddress(context *fi.Context) (*string, error) {
 
 	cloud := context.Cloud.(openstack.OpenstackCloud)
 
-	fip, err := floatingips.Get(cloud.ComputeClient(), fi.StringValue(e.ID)).Extract()
+	fip, err := cloud.GetFloatingIP(fi.StringValue(e.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -88,15 +88,11 @@ func (e *FloatingIP) Find(c *fi.Context) (*FloatingIP, error) {
 	cloud := c.Cloud.(openstack.OpenstackCloud)
 	if e.LB != nil && e.LB.PortID != nil {
 		// Layer 3
-		fipPage, err := l3floatingip.List(cloud.NetworkingClient(), l3floatingip.ListOpts{
+		fips, err := cloud.ListL3FloatingIPs(l3floatingip.ListOpts{
 			PortID: fi.StringValue(e.LB.PortID),
-		}).AllPages()
+		})
 		if err != nil {
 			return nil, fmt.Errorf("Failed to list layer 3 floating ip's for port ID %s: %v", fi.StringValue(e.LB.PortID), err)
-		}
-		fips, err := l3floatingip.ExtractFloatingIPs(fipPage)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to extract layer 3 floating ip's: %v", err)
 		}
 		if len(fips) == 0 {
 			return nil, nil
@@ -113,13 +109,9 @@ func (e *FloatingIP) Find(c *fi.Context) (*FloatingIP, error) {
 		e.ID = actual.ID
 		return actual, nil
 	} else if e.Server != nil {
-		fipPage, err := floatingips.List(cloud.ComputeClient()).AllPages()
+		fips, err := cloud.ListFloatingIPs()
 		if err != nil {
 			return nil, fmt.Errorf("Failed to list floating ip's: %v", err)
-		}
-		fips, err := floatingips.ExtractFloatingIPs(fipPage)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to extract floating ip's: %v", err)
 		}
 		if len(fips) == 0 {
 			return nil, nil
@@ -136,6 +128,7 @@ func (e *FloatingIP) Find(c *fi.Context) (*FloatingIP, error) {
 					Server:    e.Server,
 					Lifecycle: e.Lifecycle,
 				}
+				break
 			}
 		}
 		if actual != nil {
@@ -173,18 +166,18 @@ func (_ *FloatingIP) ShouldCreate(a, e, changes *FloatingIP) (bool, error) {
 func (f *FloatingIP) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes *FloatingIP) error {
 
 	if a == nil {
-		external, err := t.Cloud.(openstack.OpenstackCloud).GetExternalNetwork()
+		cloud := t.Cloud.(openstack.OpenstackCloud)
+		external, err := cloud.GetExternalNetwork()
 		if err != nil {
 			return fmt.Errorf("Failed to find external network: %v", err)
 		}
 
 		if e.LB != nil {
 			//Layer 3
-			fops := l3floatingip.CreateOpts{
+			fip, err := cloud.CreateL3FloatingIP(l3floatingip.CreateOpts{
 				FloatingNetworkID: external.ID,
 				PortID:            fi.StringValue(e.LB.PortID),
-			}
-			fip, err := l3floatingip.Create(t.Cloud.NetworkingClient(), fops).Extract()
+			})
 			if err != nil {
 				return fmt.Errorf("Failed to create floating IP: %v", err)
 			}
@@ -196,16 +189,15 @@ func (f *FloatingIP) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, chan
 			if err := e.Server.WaitForStatusActive(t); err != nil {
 				return fmt.Errorf("Failed to associate floating IP to instance %s", *e.Name)
 			}
-			fops := floatingips.CreateOpts{
+			fip, err := cloud.CreateFloatingIP(floatingips.CreateOpts{
 				Pool: external.Name,
-			}
-			fip, err := floatingips.Create(t.Cloud.ComputeClient(), fops).Extract()
+			})
 			if err != nil {
 				return fmt.Errorf("Failed to create floating IP: %v", err)
 			}
-			err = floatingips.AssociateInstance(t.Cloud.ComputeClient(), *e.Server.ID, floatingips.AssociateOpts{
+			err = cloud.AssociateFloatingIPToInstance(fi.StringValue(e.Server.ID), floatingips.AssociateOpts{
 				FloatingIP: fip.IP,
-			}).ExtractErr()
+			})
 			if err != nil {
 				return fmt.Errorf("Failed to associated floating IP to instance %s: %v", *e.Name, err)
 			}

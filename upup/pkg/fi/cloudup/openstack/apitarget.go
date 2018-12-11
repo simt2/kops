@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ limitations under the License.
 package openstack
 
 import (
-	"fmt"
 	"k8s.io/kops/upup/pkg/fi"
 )
 
@@ -39,14 +38,4 @@ func (t *OpenstackAPITarget) Finish(taskMap map[string]fi.Task) error {
 
 func (t *OpenstackAPITarget) ProcessDeletions() bool {
 	return true
-}
-
-func (t *OpenstackAPITarget) GetIDForServerGroupName(sgName *string) (*string, error) {
-	serverGroups, _ := t.Cloud.ListServerGroups()
-	for _, serverGroup := range serverGroups {
-		if serverGroup.Name == *sgName {
-			return fi.String(serverGroup.ID), nil
-		}
-	}
-	return nil, fmt.Errorf("ID not found for Server Group Name %s.", *sgName)
 }

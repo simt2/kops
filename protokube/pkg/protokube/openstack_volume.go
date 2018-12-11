@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	// TODO: This is abstracted and not really cinder, re-alias
 	cinderv2 "github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/volumeattach"
 	"k8s.io/kops/protokube/pkg/etcd"
@@ -38,7 +37,8 @@ import (
 const MetadataLatest string = "http://169.254.169.254/openstack/latest/meta_data.json"
 
 type Metadata struct {
-	ClusterName string `json:"cluster_name"`
+	// Matches openstack.TagClusterName
+	ClusterName string `json:"KubernetesCluster"`
 }
 
 type InstanceMetadata struct {
@@ -98,7 +98,7 @@ func NewOpenstackVolumes() (*OpenstackVolumes, error) {
 
 	tags := make(map[string]string)
 	// Cluster name needed to bypass missing designate options
-	tags["KubernetesCluster"] = metadata.UserMeta.ClusterName
+	tags[openstack.TagClusterName] = metadata.UserMeta.ClusterName
 
 	oscloud, err := openstack.NewOpenstackCloud(tags, nil)
 	if err != nil {
@@ -139,9 +139,9 @@ func (a *OpenstackVolumes) discoverTags() error {
 	{
 		a.clusterName = strings.TrimSpace(string(a.meta.UserMeta.ClusterName))
 		if a.clusterName == "" {
-			return fmt.Errorf("cluster_name metadata was empty")
+			return fmt.Errorf("cluster name metadata was empty")
 		}
-		glog.Infof("Found cluster_name=%q", a.clusterName)
+		glog.Infof("Found cluster name=%q", a.clusterName)
 	}
 
 	// Project ID
@@ -233,7 +233,7 @@ func (v *OpenstackVolumes) FindVolumes() ([]*Volume, error) {
 	}
 
 	for _, volume := range vols {
-		if clusterName, ok := volume.Metadata["cluster_name"]; ok && clusterName == v.clusterName {
+		if clusterName, ok := volume.Metadata[openstack.TagClusterName]; ok && clusterName == v.clusterName {
 			if _, isMasterRole := volume.Metadata[openstack.TagNameRolePrefix+"master"]; isMasterRole {
 				vol, err := v.buildOpenstackVolume(&volume)
 				if err != nil {

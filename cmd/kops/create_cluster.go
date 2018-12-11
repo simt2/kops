@@ -1061,28 +1061,6 @@ func RunCreateCluster(f *util.Factory, out io.Writer, c *CreateClusterOptions) e
 		}
 	}
 
-	if api.CloudProviderID(cluster.Spec.CloudProvider) == api.CloudProviderOpenstack {
-
-		if cluster.Spec.CloudConfig == nil {
-			cluster.Spec.CloudConfig = &api.CloudConfiguration{}
-		}
-		cluster.Spec.CloudConfig.Openstack = &api.OpenstackConfiguration{}
-
-		if cluster.Spec.API.LoadBalancer != nil {
-
-			cluster.Spec.CloudConfig.Openstack.Loadbalancer = &api.OpenstackLoadbalancerConfig{
-				Method:     fi.String("ROUND_ROBIN"),
-				Provider:   fi.String("haproxy"),
-				UseOctavia: fi.Bool(false),
-			}
-		}
-		cluster.Spec.CloudConfig.Openstack.Monitor = &api.OpenstackMonitor{
-			Delay:      fi.String("1m"),
-			Timeout:    fi.String("30s"),
-			MaxRetries: fi.Int(3),
-		}
-	}
-
 	if c.APISSLCertificate != "" {
 		cluster.Spec.API.LoadBalancer.SSLCertificate = c.APISSLCertificate
 	}

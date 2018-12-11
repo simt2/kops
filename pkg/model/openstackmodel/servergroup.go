@@ -23,6 +23,7 @@ import (
 	"k8s.io/kops/pkg/dns"
 	"k8s.io/kops/pkg/model"
 	"k8s.io/kops/upup/pkg/fi"
+	"k8s.io/kops/upup/pkg/fi/cloudup/openstack"
 	"k8s.io/kops/upup/pkg/fi/cloudup/openstacktasks"
 	"k8s.io/kops/upup/pkg/fi/fitasks"
 	"strings"
@@ -54,8 +55,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 	if ig.Spec.Role != kops.InstanceGroupRoleBastion {
 		// Bastion does not belong to the cluster and will not be running protokube.
 
-		// Must match protokube openstack volume and gossip seeds.
-		igMeta["cluster_name"] = b.ClusterName()
+		igMeta[openstack.TagClusterName] = b.ClusterName()
 	}
 
 	startupScript, err := b.BootstrapScript.ResourceNodeUp(ig, b.Cluster)

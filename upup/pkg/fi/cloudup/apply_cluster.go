@@ -477,6 +477,10 @@ func (c *ApplyClusterCmd) Run() error {
 
 	case kops.CloudProviderOpenstack:
 		{
+			if !AlphaAllowOpenstack.Enabled() {
+				return fmt.Errorf("Openstack support is currently alpha, and is feature-gated.  export KOPS_FEATURE_FLAGS=AlphaAllowOpenstack")
+			}
+
 			osCloud := cloud.(openstack.OpenstackCloud)
 			region = osCloud.Region()
 

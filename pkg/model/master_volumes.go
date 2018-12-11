@@ -248,7 +248,7 @@ func (b *MasterVolumeBuilder) addOpenstackVolume(c *fi.ModelBuilderContext, name
 		tags[k] = v
 	}
 
-	tags["cluster_name"] = b.ClusterName()
+	tags[openstack.TagClusterName] = b.ClusterName()
 	// This is the configuration of the etcd cluster
 	tags[openstack.TagNameEtcdClusterPrefix+etcd.Name] = m.Name + "/" + strings.Join(allMembers, ",")
 	// This says "only mount on a master"

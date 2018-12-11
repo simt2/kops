@@ -24,6 +24,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/pagination"
 	"k8s.io/kops/protokube/pkg/gossip"
+	"k8s.io/kops/upup/pkg/fi/cloudup/openstack"
 )
 
 type SeedProvider struct {
@@ -47,35 +48,14 @@ func (p *SeedProvider) GetSeeds() ([]string, error) {
 		}
 
 		for _, server := range s {
-			if clusterName, ok := server.Metadata["cluster_name"]; ok {
+			if clusterName, ok := server.Metadata[openstack.TagClusterName]; ok {
 				var err error
-				if localAddr, ok := server.Addresses[clusterName]; ok {
-
-					if localAddresses, ok := localAddr.([]interface{}); ok {
-						for _, addr := range localAddresses {
-							addrMap := addr.(map[string]interface{})
-							// TODO: May have multiple fixed
-							if addrType, ok := addrMap["OS-EXT-IPS:type"]; ok && addrType == "fixed" {
-								if fixedIP, ok := addrMap["addr"]; ok {
-									if fixedIPStr, ok := fixedIP.(string); ok {
-										seeds = append(seeds, fixedIPStr)
-									} else {
-										err = fmt.Errorf("Fixed IP was not a string: %v", fixedIP)
-									}
-								} else {
-									err = fmt.Errorf("Type fixed did not contain addr: %v", addr)
-								}
-							} else {
-								err = fmt.Errorf("Server %s did not contain a fixed IP.", server.ID)
-							}
-						}
-					}
-				} else {
-					err = fmt.Errorf("Server `%s` interface name `%s` not found!", server.ID, clusterName)
-				}
+				addr, err := openstack.GetServerFixedIP(&server, clusterName)
 				if err != nil {
 					glog.Warningf("Failed to list seeds: %v", err)
+					continue
 				}
+				seeds = append(seeds, addr)
 			}
 		}
 		return true, nil
